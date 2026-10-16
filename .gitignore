@@ -1,0 +1,35 @@
+# Python cache & compiled bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local databases, logs & models
+*.db
+*.sqlite
+*.sqlite3
+*.log
+*.pkl
+*.joblib
+model_cache/
+
+# Environments
+venv/
+.venv/
+env/
+ENV/
+
+# Agent artifacts
+.agents/
+.idea/
+.vscode/
+
+# OS artifacts
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
