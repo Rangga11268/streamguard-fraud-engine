@@ -3,7 +3,7 @@
 [![Python Version](https://img.shields.io/badge/Python-3.12-blue.svg)](https://python.org)
 [![CI Pipeline](https://github.com/Rangga11268/streamguard-fraud-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/Rangga11268/streamguard-fraud-engine/actions)
 [![Tests Passing](https://img.shields.io/badge/Tests-174%20Passing-brightgreen.svg)]()
-[![Platform](https://img.shields.io/badge/Platform-Windows%20Native%20%7C%20Zero--Docker-success.svg)]()
+[![Platform](https://img.shields.io/badge/Platform-Cross--Platform%20%7C%20Zero--Docker-success.svg)]()
 [![P99 Latency](https://img.shields.io/badge/P99%20Latency-1.19ms%20(CPU)-orange.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -49,15 +49,15 @@ flowchart TD
 
 ---
 
-## 2. Quantitative Performance & Audit Verification
+## 2. Quantitative Performance & Benchmark Verification
 
-Empirically verified by the independent **Victory Auditor**:
+Benchmark Results (Verified via `benchmarks/benchmark_engine.py` on Python 3.12 / CPU):
 
 | Objective Metric / SLA | Project Requirement | Measured Empirical Result | Headroom / Margin |
 | :--- | :--- | :--- | :--- |
 | **P99 Scoring Latency (CPU)** | $< 15.0\text{ ms}$ | **0.91 ms – 1.30 ms** | **11.5x – 16.6x faster** |
 | **1,000-Entity Feature Extraction** | $< 5.0\text{ ms}$ | **2.46 ms – 2.56 ms** | **2.0x faster** |
-| **PR-AUC Uplift under Concept Drift** | $\ge +15.0\%$ | **+1897.1% uplift** | **Verified vs static baseline** |
+| **PR-AUC Retention under Concept Drift** | $\ge 15.0\%$ gain | **0.82 vs 0.04 (+0.78 absolute gain)** | **Maintained vs degraded static baseline** |
 | **PSI Drift Detection Latency** | $\le 200\text{ samples}$ | **74 – 150 samples** | **Early alert triggered** |
 | **3-Tier Financial Loss Reduction** | $\ge 25.0\%$ | **40.33% loss reduction** | **Verified vs $\tau = 0.5$** |
 | **Interactive Terminal Demo Runtime** | $< 60.0\text{ s}$ | **19.0 s** | **3.1x faster** |
@@ -78,7 +78,7 @@ streamguard-fraud-engine/
 │   ├── models/
 │   │   ├── loss.py               # Custom cost-sensitive focal loss with Hessian
 │   │   ├── calibration.py        # Platt scaling & Bayes probability calibration
-│   │   ├── trainer.py            # Windows-safe LightGBM training pipeline
+│   │   ├── trainer.py            # Cross-platform LightGBM training pipeline
 │   │   └── classifier.py         # Sub-15ms CPU inference wrapper
 │   ├── memory/
 │   │   ├── feedback_queue.py     # Priority queues separating fast vs delayed labels
@@ -104,19 +104,19 @@ streamguard-fraud-engine/
 │   ├── test_drift.py             # PSI & Wasserstein drift tests
 │   ├── test_decision.py          # 3-tier routing & cost-matrix tests
 │   ├── test_adversarial_m1.py    # Temporal lookahead & out-of-order stress tests
-│   ├── test_adversarial_m6.py    # 16-thread concurrency & fuzz resilience tests
+│   ├── test_adversarial_m6.py    # Concurrency & fuzz resilience tests
 │   └── test_tier5_api_endpoints.py # REST API contract & validation tests
 ├── demo.py                       # Interactive 5-act live terminal demonstration
 ├── run_tests.py                  # Unified multi-runner test execution CLI
-└── requirements.txt              # Production dependencies (Python 3.12 native)
+└── requirements.txt              # Production dependencies (Python 3.10+ cross-platform)
 ```
 
 ---
 
-## 4. Quickstart Guide (Zero-Docker / Native Windows)
+## 4. Quickstart Guide (Cross-Platform / Zero-Dependency Local Run)
 
 ### 1. Prerequisites
-- Python 3.12+ installed natively on Windows.
+- Python 3.10+ (Tested on Windows & Linux).
 
 ### 2. Installation
 ```bash
