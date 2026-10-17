@@ -22,10 +22,15 @@ venv/
 env/
 ENV/
 
-# Agent artifacts
+# Agent artifacts & internal specs
 .agents/
 .idea/
 .vscode/
+AGENTS.md
+PROJECT.md
+TEST_*.md
+stat
+test_results_*.json
 
 # OS artifacts
 Thumbs.db
