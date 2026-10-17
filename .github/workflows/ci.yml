@@ -30,11 +30,15 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Execute Full Automated Test Suite (51 Tests)
+    - name: Execute Master Test Suite (174 Tests)
+      run: |
+        pytest tests -v
+
+    - name: Execute Tiered Test Runner
       run: |
         python run_tests.py --tier all
 
-    - name: Execute Adversarial Stress Suite (27 Tests)
+    - name: Execute Adversarial Stress Suite
       run: |
         python run_tests.py --adversarial
 
