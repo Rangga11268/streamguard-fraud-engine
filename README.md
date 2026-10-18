@@ -61,17 +61,23 @@ flowchart TD
 
 ## 2. Quantitative Performance & Benchmark Verification
 
-Benchmark Results (Verified via `benchmarks/benchmark_engine.py` on Python 3.12 / CPU):
+Benchmark Results (Verified via `benchmarks/benchmark_engine.py` on Python 3.12 / standard x86_64 CPU):
 
 | Objective Metric / SLA | Project Requirement | Measured Empirical Result | Headroom / Margin |
 | :--- | :--- | :--- | :--- |
-| **P99 Scoring Latency (CPU)** | $< 15.0\text{ ms}$ | **0.91 ms – 1.30 ms** | **11.5x – 16.6x faster** |
-| **1,000-Entity Feature Extraction** | $< 5.0\text{ ms}$ | **2.46 ms – 2.56 ms** | **2.0x faster** |
+| **P99 Scoring Latency (CPU)** | $< 15.0\text{ ms}$ | **0.91 ms – 1.30 ms** | **11.5x – 16.6x faster on local CPU** |
+| **1,000-Entity Feature Extraction** | $< 5.0\text{ ms}$ | **2.46 ms – 2.56 ms** | **2.0x faster rolling deque window** |
 | **PR-AUC Retention under Concept Drift** | $\ge 15.0\%$ gain | **0.82 vs 0.04 (+0.78 absolute gain)** | **Maintained vs degraded static baseline** |
-| **PSI Drift Detection Latency** | $\le 200\text{ samples}$ | **74 – 150 samples** | **Early alert triggered** |
-| **3-Tier Financial Loss Reduction** | $\ge 25.0\%$ | **40.33% loss reduction** | **Verified vs $\tau = 0.5$** |
+| **PSI Drift Detection Latency** | $\le 200\text{ samples}$ | **74 – 150 samples** | **Early alert triggered before label arrival** |
+| **3-Tier Financial Loss Reduction** | $\ge 25.0\%$ | **40.33% simulated loss reduction** | **Verified vs fixed $\tau = 0.5$ threshold** |
 | **Interactive Terminal Demo Runtime** | $< 60.0\text{ s}$ | **19.0 s** | **3.1x faster** |
-| **Master Test Suite Passing** | 100% Pass | **174 / 174 Tests Passing** | **Zero failures** |
+| **Master Test Suite Passing** | 100% Pass | **174 / 174 Tests Passing** | **Automated regression suite verified** |
+
+> [!NOTE]
+> **Experimental Context & Production Generalization:**
+> * **Simulated Stream Scope:** The 40.33% financial loss reduction is measured in a controlled simulation comparing 3-tier dynamic cost routing against a fixed-threshold baseline ($\tau = 0.5$) under defined asymmetric costs ($C_{\text{FP}} = \$15$ customer challenge/friction vs $C_{\text{FN}} = \$150$ chargeback loss) over a non-stationary synthetic stream.
+> * **Production Considerations:** In real-world card network deployments, loss reduction scales with transaction volume and issuer-specific interchange dispute costs. The synthetic generator models realistic multi-regime drift, but real bank streams require periodic threshold recalculation as macro-economic consumer behavior evolves.
+> * **Latency Environment:** Latency metrics (0.91ms - 1.30ms P99) represent native single-core Python 3.12 CPU execution with vectorized NumPy feature calculations, demonstrating sub-millisecond suitability before network serialization.
 
 ---
 
