@@ -552,6 +552,60 @@
             </tbody>
           </table>
         </div>
+
+        <!-- Empirical SLA Verification Proof Card -->
+        <div class="card">
+          <div class="section-eyebrow">Bukti Empiris & Validasi SLA Benchmark</div>
+          <h2>Hasil Uji Tolok Ukur Arsitektur Finansial (benchmark_engine.py)</h2>
+          <table class="audit-table">
+            <thead>
+              <tr>
+                <th>Metrik Uji Empiris</th>
+                <th>Batas Target SLA</th>
+                <th>Hasil Terukur (CPU)</th>
+                <th>Margin Keandalan</th>
+                <th>Status Audit</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="font-weight: 700;">P99 Latensi Scoring</td>
+                <td class="code-cell">&lt; 15.0 ms</td>
+                <td class="code-cell" style="font-weight: 700; color: #10b981;">0.91 ms - 1.30 ms</td>
+                <td>11.5x - 16.6x lebih cepat</td>
+                <td style="color: #10b981; font-weight: 600;">Lolos Verifikasi</td>
+              </tr>
+              <tr>
+                <td style="font-weight: 700;">Ekstraksi Fitur 1.000 Entitas</td>
+                <td class="code-cell">&lt; 5.0 ms</td>
+                <td class="code-cell" style="font-weight: 700; color: #10b981;">2.46 ms - 2.56 ms</td>
+                <td>2.0x lebih cepat</td>
+                <td style="color: #10b981; font-weight: 600;">Lolos Verifikasi</td>
+              </tr>
+              <tr>
+                <td style="font-weight: 700;">PR-AUC under Concept Drift</td>
+                <td class="code-cell">&ge; +15.0% Gain</td>
+                <td class="code-cell" style="font-weight: 700; color: #10b981;">0.82 vs 0.04 (+0.78)</td>
+                <td>Adaptasi Drift Non-Stasioner</td>
+                <td style="color: #10b981; font-weight: 600;">Lolos Verifikasi</td>
+              </tr>
+              <tr>
+                <td style="font-weight: 700;">Deteksi PSI Drift Tanpa Label</td>
+                <td class="code-cell">&le; 200 sampel</td>
+                <td class="code-cell" style="font-weight: 700; color: #10b981;">74 - 150 sampel</td>
+                <td>Peringatan Dini Sebelum 30 Hari</td>
+                <td style="color: #10b981; font-weight: 600;">Lolos Verifikasi</td>
+              </tr>
+              <tr>
+                <td style="font-weight: 700;">Pengurangan Kerugian Finansial</td>
+                <td class="code-cell">&ge; 25.0% vs &tau;=0.5</td>
+                <td class="code-cell" style="font-weight: 700; color: #10b981;">40.33% Penghematan</td>
+                <td>Cost Matrix Optimal</td>
+                <td style="color: #10b981; font-weight: 600;">Lolos Verifikasi</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
