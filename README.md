@@ -1,11 +1,21 @@
-# StreamGuard: Real-Time Financial Fraud Engine under Delayed Feedback & Concept Drift
+<p align="center">
+  <img src="assets/logo.svg" alt="StreamGuard Engine Logo" width="130" height="130">
+</p>
 
-[![Python Version](https://img.shields.io/badge/Python-3.12-blue.svg)](https://python.org)
-[![CI Pipeline](https://github.com/Rangga11268/streamguard-fraud-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/Rangga11268/streamguard-fraud-engine/actions)
-[![Tests Passing](https://img.shields.io/badge/Tests-174%20Passing-brightgreen.svg)]()
-[![Platform](https://img.shields.io/badge/Platform-Cross--Platform%20%7C%20Zero--Docker-success.svg)]()
-[![P99 Latency](https://img.shields.io/badge/P99%20Latency-1.19ms%20(CPU)-orange.svg)]()
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+<h1 align="center">StreamGuard</h1>
+<p align="center">
+  <strong>Real-Time Financial Fraud Engine under Delayed Feedback & Concept Drift</strong><br>
+  <em>Streaming sliding-window feature store, Dirichlet-smoothed PSI drift telemetry, and 3-tier cost-matrix routing.</em>
+</p>
+
+<p align="center">
+  <a href="https://python.org"><img src="https://img.shields.io/badge/Python-3.12-blue.svg" alt="Python 3.12"></a>
+  <a href="https://github.com/Rangga11268/streamguard-fraud-engine/actions"><img src="https://github.com/Rangga11268/streamguard-fraud-engine/actions/workflows/ci.yml/badge.svg" alt="CI Pipeline"></a>
+  <a href="#"><img src="https://img.shields.io/badge/Tests-174%20Passing-brightgreen.svg" alt="Tests"></a>
+  <a href="#"><img src="https://img.shields.io/badge/Platform-Cross--Platform%20%7C%20Zero--Docker-success.svg" alt="Platform"></a>
+  <a href="#"><img src="https://img.shields.io/badge/P99%20Latency-1.19ms%20(CPU)-orange.svg" alt="Latency"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+</p>
 
 > **StreamGuard** is a production-grade, ultra-low-latency financial transaction fraud detection engine engineered to solve the **30-day verification latency dilemma (delayed labels)** and **extreme class imbalance (<0.1% fraud rate)** in non-stationary banking streams.
 

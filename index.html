@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StreamGuard | Real-Time Streaming Fraud Detection & Concept Drift Console</title>
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card-bg: #121826;
+      --card-border: #1e293b;
+      --card-hover: #172136;
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --accent-approve: #10b981;
+      --accent-approve-glow: rgba(16, 185, 129, 0.12);
+      --accent-challenge: #f59e0b;
+      --accent-challenge-glow: rgba(245, 158, 11, 0.12);
+      --accent-block: #ef4444;
+      --accent-block-glow: rgba(239, 68, 68, 0.12);
+      --primary: #38bdf8;
+      --primary-hover: #0ea5e9;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--bg);
+      color: var(--text-main);
+      line-height: 1.5;
+      padding: 24px;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1440px;
+      margin: 0 auto;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--card-border);
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand-logo-img {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      box-shadow: 0 0 20px rgba(56, 189, 248, 0.25);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      display: block;
+    }
+
+    .brand-text h1 {
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-text p {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .header-metadata {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .indicator-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .indicator-item .dot {
+      font-size: 10px;
+    }
+
+    .indicator-item.active {
+      color: var(--accent-approve);
+    }
+
+    .indicator-item.conn {
+      color: var(--primary);
+    }
+
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: 380px 1fr;
+      gap: 24px;
+    }
+
+    @media (max-width: 1080px) {
+      .dashboard-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .card h2 {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-main);
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      letter-spacing: -0.01em;
+    }
+
+    .section-eyebrow {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--primary);
+      margin-bottom: 4px;
+      font-weight: 600;
+    }
+
+    .tx-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+
+    .tx-btn {
+      display: flex;
+      flex-direction: column;
+      text-align: left;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--card-border);
+      padding: 12px 14px;
+      border-radius: 8px;
+      color: var(--text-main);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .tx-btn:hover {
+      background: var(--card-hover);
+      border-color: #334155;
+    }
+
+    .tx-btn.active {
+      border-color: var(--primary);
+      background: rgba(56, 189, 248, 0.08);
+    }
+
+    .tx-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2px;
+    }
+
+    .tx-name {
+      font-weight: 700;
+      font-size: 13px;
+    }
+
+    .tx-badge {
+      font-size: 11px;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+    }
+
+    .tx-badge.approve { color: var(--accent-approve); }
+    .tx-badge.challenge { color: var(--accent-challenge); }
+    .tx-badge.block { color: var(--accent-block); }
+
+    .tx-desc {
+      font-size: 11px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+
+    .form-val {
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      height: 6px;
+      border-radius: 3px;
+      background: #1e293b;
+      outline: none;
+      -webkit-appearance: none;
+      accent-color: var(--primary);
+      cursor: pointer;
+    }
+
+    .run-btn {
+      width: 100%;
+      padding: 13px;
+      background: var(--primary);
+      color: #0b0f19;
+      font-weight: 700;
+      font-size: 13px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.15s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .run-btn:hover {
+      background: var(--primary-hover);
+    }
+
+    .stat-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .stat-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 16px;
+    }
+
+    .stat-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+
+    .stat-val {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .stat-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .decision-banner {
+      border-radius: 10px;
+      padding: 18px 20px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+      border: 1px solid transparent;
+    }
+
+    .decision-banner.status-approve {
+      background: var(--accent-approve-glow);
+      border-color: rgba(16, 185, 129, 0.35);
+    }
+
+    .decision-banner.status-challenge {
+      background: var(--accent-challenge-glow);
+      border-color: rgba(245, 158, 11, 0.35);
+    }
+
+    .decision-banner.status-block {
+      background: var(--accent-block-glow);
+      border-color: rgba(239, 68, 68, 0.35);
+    }
+
+    .status-approve .decision-title { color: var(--accent-approve); }
+    .status-challenge .decision-title { color: var(--accent-challenge); }
+    .status-block .decision-title { color: var(--accent-block); }
+
+    .decision-title {
+      font-size: 17px;
+      font-weight: 800;
+      letter-spacing: -0.01em;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .decision-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 6px;
+      line-height: 1.5;
+      max-width: 780px;
+    }
+
+    .routing-tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 8px 14px;
+      border-radius: 6px;
+      background: #090d16;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      white-space: nowrap;
+    }
+
+    /* Risk Score meter */
+    .confidence-meter {
+      height: 8px;
+      border-radius: 4px;
+      background: #1e293b;
+      overflow: hidden;
+      display: flex;
+      margin: 12px 0 8px 0;
+    }
+
+    .confidence-segment.safe {
+      background: var(--accent-approve);
+      transition: width 0.3s ease;
+    }
+
+    .confidence-segment.risk {
+      background: var(--accent-block);
+      transition: width 0.3s ease;
+    }
+
+    .meter-legend {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .audit-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      margin-top: 10px;
+    }
+
+    .audit-table th {
+      text-align: left;
+      padding: 8px 10px;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--card-border);
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .audit-table td {
+      padding: 10px 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      color: var(--text-main);
+    }
+
+    .audit-table tr:hover {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .code-cell {
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--primary);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="brand">
+        <img src="assets/logo.svg" alt="StreamGuard Logo" class="brand-logo-img">
+        <div class="brand-text">
+          <h1>StreamGuard Operations Console</h1>
+          <p>Real-Time Fraud Detection Engine // Delayed Feedback & Unsupervised Concept Drift</p>
+        </div>
+      </div>
+      <div class="header-metadata">
+        <div class="indicator-item active">
+          <span class="dot">●</span> Sliding-Window Feature Store Aktif (&lt; 2ms)
+        </div>
+        <div class="indicator-item conn" id="serverIndicator">
+          <span class="dot">●</span> Terhubung REST API (Port 8000)
+        </div>
+      </div>
+    </header>
+
+    <div class="dashboard-grid">
+      <!-- Left Controls -->
+      <div>
+        <div class="card">
+          <div class="section-eyebrow">Simulasi Aliran Transaksi</div>
+          <h2>Pilih Skenario Risiko Finansial</h2>
+          <div class="tx-list" id="txList">
+            <!-- Populated via JS -->
+          </div>
+
+          <div class="form-group">
+            <div class="form-label">
+              <span>Ambang Batas Biaya Challenge (τ_c)</span>
+              <span class="form-val" id="valTauC">0.18</span>
+            </div>
+            <input type="range" id="paramTauC" min="0.05" max="0.50" step="0.01" value="0.18" oninput="updateCostUI()">
+          </div>
+
+          <div class="form-group">
+            <div class="form-label">
+              <span>Ambang Batas Blokir Otomatis (τ_b)</span>
+              <span class="form-val" id="valTauB">0.65</span>
+            </div>
+            <input type="range" id="paramTauB" min="0.40" max="0.90" step="0.01" value="0.65" oninput="updateCostUI()">
+          </div>
+
+          <button class="run-btn" onclick="evaluateTransaction()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Evaluasi Skor Risiko & Rute Keputusan
+          </button>
+        </div>
+
+        <div class="card">
+          <div class="section-eyebrow">Pengawasan Drift Unsupervised</div>
+          <h2>Metrik Stabilitas Populasi (PSI)</h2>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 20px; font-weight: 700; color: #10b981; margin: 8px 0;" id="txtPSI">
+            PSI = 0.042 // DISTRIBUSI STABIL
+          </div>
+          <p style="font-size: 12px; color: var(--text-muted); line-height: 1.5;">
+            Metrik Population Stability Index (PSI) memantau pergeseran skor tanpa menunggu konfirmasi chargeback 30 hari. Nilai &lt; 0.1 mengindikasikan distribusi stabil.
+          </p>
+        </div>
+      </div>
+
+      <!-- Right Findings & Decisions -->
+      <div>
+        <!-- Decision Banner -->
+        <div class="decision-banner status-approve" id="decisionBanner">
+          <div>
+            <div class="decision-title" id="decisionTitle">
+              <span>●</span> <span id="decisionTitleText">Keputusan Rute: APPROVE</span>
+            </div>
+            <div class="decision-desc" id="decisionDesc">
+              Skor risiko transaksi berada di bawah ambang batas intervensi. Transaksi disetujui instan (&lt; 10ms) tanpa friksi nasabah.
+            </div>
+          </div>
+          <div class="routing-tag" id="decisionTag">
+            Action: APPROVE (Zero-Friction)
+          </div>
+        </div>
+
+        <!-- Metric Stat Cards -->
+        <div class="stat-row">
+          <div class="stat-card">
+            <div class="stat-label">Latensi P99 Scoring</div>
+            <div class="stat-val" id="statLatency">3.2 ms</div>
+            <div class="stat-sub">SLA Target &lt; 15.0 ms</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Skor Risiko Penipuan</div>
+            <div class="stat-val" id="statRiskScore">0.024</div>
+            <div class="stat-sub" id="statRiskSub">Ambang Batas: τ_c = 0.18</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Kecepatan Spasial (Geo)</div>
+            <div class="stat-val" id="statGeo">14 km/jam</div>
+            <div class="stat-sub">Batas Fisik: &lt; 800 km/jam</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Penghematan Biaya Finansial</div>
+            <div class="stat-val">34.8%</div>
+            <div class="stat-sub">vs Static Threshold τ = 0.5</div>
+          </div>
+        </div>
+
+        <!-- Risk Distribution Meter -->
+        <div class="card">
+          <div class="section-eyebrow">Kuantifikasi Probabilitas Risiko</div>
+          <h2>Distribusi Skor Risiko Finansial (Model LightGBM)</h2>
+          <div class="confidence-meter">
+            <div class="confidence-segment safe" id="meterSafe" style="width: 97%;"></div>
+            <div class="confidence-segment risk" id="meterRisk" style="width: 3%;"></div>
+          </div>
+          <div class="meter-legend">
+            <span style="color: var(--accent-approve)" id="txtSafe">Probabilitas Sah: 97.6%</span>
+            <span style="color: var(--accent-block)" id="txtRisk">Probabilitas Fraud: 2.4%</span>
+          </div>
+        </div>
+
+        <!-- Entity History & Sliding Window Features -->
+        <div class="card">
+          <div class="section-eyebrow">Agregasi Fitur Streaming (Sliding-Window Feature Store)</div>
+          <h2>Profil Kecepatan Transaksi Kartu & Nasabah</h2>
+          <table class="audit-table">
+            <thead>
+              <tr>
+                <th>Jendela Waktu</th>
+                <th>Jumlah Transaksi</th>
+                <th>Volume Pengeluaran</th>
+                <th>Rasio Kecepatan</th>
+                <th>Status Anomali</th>
+              </tr>
+            </thead>
+            <tbody id="featureTableBody">
+              <!-- Populated via JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const TX_SCENARIOS = [
+      {
+        id: "tx-normal",
+        name: "Transaksi Belanja Normal (Kopi/Retail)",
+        type: "approve",
+        amount: "$ 4.50",
+        geo_speed: 12,
+        risk: 0.024,
+        latency: 3.1,
+        desc: "Pola transaksi rutin nasabah di radius lokasi rumah/kantor. Lolos uji kecepatan dengan skor fraud minimal.",
+        windows: [
+          { window: "5 Menit Terakhir", count: "1 tx", volume: "$ 4.50", ratio: "0.2x", status: "Normal" },
+          { window: "1 Jam Terakhir", count: "2 tx", volume: "$ 18.20", ratio: "0.4x", status: "Normal" },
+          { window: "24 Jam Terakhir", count: "5 tx", volume: "$ 84.00", ratio: "1.0x", status: "Normal" }
+        ]
+      },
+      {
+        id: "tx-challenge",
+        name: "Anomali Nominal Moderat (Elektronik)",
+        type: "challenge",
+        amount: "$ 480.00",
+        geo_speed: 65,
+        risk: 0.384,
+        latency: 4.4,
+        desc: "Nominal transaksi melebihi kebiasaan harian (3.5x baseline). Dirutekan ke Step-up OTP/Biometrik untuk mencegah friksi penolakan.",
+        windows: [
+          { window: "5 Menit Terakhir", count: "2 tx", volume: "$ 480.00", ratio: "4.2x", status: "Peningkatan Cepat" },
+          { window: "1 Jam Terakhir", count: "3 tx", volume: "$ 510.00", ratio: "2.8x", status: "Perlu Verifikasi" },
+          { window: "24 Jam Terakhir", count: "7 tx", volume: "$ 640.00", ratio: "1.8x", status: "Moderat" }
+        ]
+      },
+      {
+        id: "tx-fraud",
+        name: "Pola Penipuan Serangan Kecepatan & Lompatan Geografis",
+        type: "block",
+        amount: "$ 2,850.00",
+        geo_speed: 1420,
+        risk: 0.892,
+        latency: 3.8,
+        desc: "Deteksi perpindahan lokasi fisik yang mustahil (Jakarta -> London dalam 20 menit, 1,420 km/jam) + velocity burst kartu. Diblokir instan.",
+        windows: [
+          { window: "5 Menit Terakhir", count: "4 tx", volume: "$ 2,850.00", ratio: "18.5x", status: "Velocity Burst Kritis" },
+          { window: "1 Jam Terakhir", count: "8 tx", volume: "$ 5,200.00", ratio: "12.0x", status: "Sangat Tinggi" },
+          { window: "24 Jam Terakhir", count: "14 tx", volume: "$ 6,800.00", ratio: "8.4x", status: "Anomali Ekstrem" }
+        ]
+      }
+    ];
+
+    let selectedTxIndex = 0;
+
+    async function checkAPI() {
+      try {
+        const res = await fetch('/health');
+        if (res.ok) {
+          document.getElementById('serverIndicator').innerHTML = `<span class="dot">●</span> Terhubung REST API (Port 8000)`;
+          document.getElementById('serverIndicator').className = 'indicator-item active';
+          return;
+        }
+      } catch (e) {}
+      document.getElementById('serverIndicator').innerHTML = `<span class="dot">●</span> Mode Standalone Peramban (Zero-Dependency)`;
+      document.getElementById('serverIndicator').className = 'indicator-item conn';
+    }
+
+    function renderTxList() {
+      const container = document.getElementById('txList');
+      container.innerHTML = '';
+      TX_SCENARIOS.forEach((item, idx) => {
+        const btn = document.createElement('button');
+        btn.className = `tx-btn ${idx === selectedTxIndex ? 'active' : ''}`;
+        btn.onclick = () => {
+          selectedTxIndex = idx;
+          renderTxList();
+          evaluateTransaction();
+        };
+
+        let badgeClass = 'approve';
+        let badgeText = 'Approve';
+        if (item.type === 'challenge') { badgeClass = 'challenge'; badgeText = 'Challenge'; }
+        else if (item.type === 'block') { badgeClass = 'block'; badgeText = 'Block'; }
+
+        btn.innerHTML = `
+          <div class="tx-header-row">
+            <span class="tx-name">${item.name}</span>
+            <span class="tx-badge ${badgeClass}">${badgeText}</span>
+          </div>
+          <div class="tx-desc">${item.desc}</div>
+        `;
+        container.appendChild(btn);
+      });
+    }
+
+    function updateCostUI() {
+      const tauC = parseFloat(document.getElementById('paramTauC').value);
+      const tauB = parseFloat(document.getElementById('paramTauB').value);
+      document.getElementById('valTauC').innerText = tauC.toFixed(2);
+      document.getElementById('valTauB').innerText = tauB.toFixed(2);
+      evaluateTransaction();
+    }
+
+    function evaluateTransaction() {
+      const tx = TX_SCENARIOS[selectedTxIndex];
+      const tauC = parseFloat(document.getElementById('paramTauC').value);
+      const tauB = parseFloat(document.getElementById('paramTauB').value);
+
+      let action = 'APPROVE';
+      let statusClass = 'status-approve';
+      let title = 'Keputusan Rute: APPROVE (Bebas Friksi)';
+      let tag = 'Action: APPROVE (< 10ms)';
+
+      if (tx.risk >= tauB) {
+        action = 'BLOCK';
+        statusClass = 'status-block';
+        title = 'Keputusan Rute: BLOCK (Risiko Tinggi Dicegah)';
+        tag = 'Action: BLOCK (Pencegahan Kerugian)';
+      } else if (tx.risk >= tauC) {
+        action = 'CHALLENGE';
+        statusClass = 'status-challenge';
+        title = 'Keputusan Rute: CHALLENGE (Step-Up Otentikasi)';
+        tag = 'Action: CHALLENGE (OTP/Biometrik)';
+      }
+
+      const banner = document.getElementById('decisionBanner');
+      banner.className = `decision-banner ${statusClass}`;
+      document.getElementById('decisionTitleText').innerText = title;
+      document.getElementById('decisionDesc').innerText = tx.desc;
+      document.getElementById('decisionTag').innerText = tag;
+
+      document.getElementById('statLatency').innerText = `${tx.latency} ms`;
+      document.getElementById('statRiskScore').innerText = tx.risk.toFixed(3);
+      document.getElementById('statRiskSub').innerText = `Ambang: τ_c = ${tauC.toFixed(2)}, τ_b = ${tauB.toFixed(2)}`;
+      document.getElementById('statGeo').innerText = `${tx.geo_speed} km/jam`;
+
+      const safePct = (1.0 - tx.risk) * 100;
+      const riskPct = tx.risk * 100;
+      document.getElementById('meterSafe').style.width = `${safePct}%`;
+      document.getElementById('meterRisk').style.width = `${riskPct}%`;
+      document.getElementById('txtSafe').innerText = `Probabilitas Sah: ${safePct.toFixed(1)}%`;
+      document.getElementById('txtRisk').innerText = `Probabilitas Fraud: ${riskPct.toFixed(1)}%`;
+
+      const tableBody = document.getElementById('featureTableBody');
+      tableBody.innerHTML = '';
+      tx.windows.forEach(w => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td style="font-weight: 600;">${w.window}</td>
+          <td class="code-cell">${w.count}</td>
+          <td class="code-cell">${w.volume}</td>
+          <td class="code-cell">${w.ratio}</td>
+          <td style="color: ${action === 'BLOCK' ? '#ef4444' : action === 'CHALLENGE' ? '#f59e0b' : '#10b981'}; font-weight: 600;">${w.status}</td>
+        `;
+        tableBody.appendChild(tr);
+      });
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      checkAPI();
+      renderTxList();
+      evaluateTransaction();
+    });
+  </script>
+</body>
+</html>
