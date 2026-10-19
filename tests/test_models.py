@@ -238,6 +238,14 @@ class TestFraudModelTrainer(unittest.TestCase):
         with self.assertRaises(ValueError):
             trainer._sanitize_inputs(X_inf, y_bad[:50])
 
+        # Unpaired X_val and y_val
+        X_sample = np.random.randn(50, 16).astype(np.float32)
+        y_sample = np.zeros(50, dtype=np.int32)
+        with self.assertRaises(ValueError):
+            trainer.train(X_sample, y_sample, X_val=X_sample, y_val=None)
+        with self.assertRaises(ValueError):
+            trainer.train(X_sample, y_sample, X_val=None, y_val=y_sample)
+
     def test_pr_auc_improvement_over_bce(self) -> None:
         """
         Verify cost-sensitive loss achieves >= 15% PR-AUC improvement over standard BCE

@@ -165,8 +165,11 @@ class FraudModelTrainer:
         use_time_split = self.config.time_based_split if time_based_split is None else time_based_split
         eval_protocol = "temporal_walk_forward" if use_time_split else "stratified_random"
 
+        if (X_val is None) != (y_val is None):
+            raise ValueError("X_val and y_val must be provided together (both None or both non-None)")
+
         # Train / validation split
-        if X_val is None or y_val is None:
+        if X_val is None and y_val is None:
             if use_time_split:
                 # Temporal Walk-Forward split: train on earlier transactions, validate on future
                 # Strictly eliminates look-ahead temporal data leakage in non-stationary fraud streams
