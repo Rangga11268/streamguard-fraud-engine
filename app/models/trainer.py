@@ -50,7 +50,7 @@ class ModelTrainingConfig:
     gamma: float = 0.0
     calibration_method: str = "platt"
     val_split: float = 0.20
-    time_based_split: bool = True  # Avoids look-ahead temporal data leakage in streaming transactions
+    time_based_split: bool = False  # Set True for chronological streaming logs to avoid temporal look-ahead leakage
     random_state: int = 42
     n_jobs: int = 1  # STRICT Windows single-process requirement
     verbose: int = -1
@@ -158,18 +158,14 @@ class FraudModelTrainer:
         if X_val is None or y_val is None:
             if self.config.time_based_split:
                 # Temporal Walk-Forward split: train on earlier transactions, validate on future
-                # Eliminates look-ahead temporal data leakage in non-stationary fraud streams
+                # Strictly eliminates look-ahead temporal data leakage in non-stationary fraud streams
                 split_idx = int(len(X_clean) * (1.0 - self.config.val_split))
                 X_tr, X_va = X_clean[:split_idx], X_clean[split_idx:]
                 y_tr, y_va = y_clean[:split_idx], y_clean[split_idx:]
-                # Fallback to stratified random split only if validation slice has 0 fraud instances
-                if np.sum(y_va == 1) == 0 and np.sum(y_clean == 1) >= 4:
-                    X_tr, X_va, y_tr, y_va = train_test_split(
-                        X_clean,
-                        y_clean,
-                        test_size=self.config.val_split,
-                        random_state=self.config.random_state,
-                        stratify=y_clean,
+                if np.sum(y_va == 1) == 0:
+                    raise ValueError(
+                        f"Temporal validation slice (last {int(self.config.val_split*100)}% of transactions) "
+                        "contains 0 fraud instances. Ensure dataset has positive fraud labels in the validation horizon."
                     )
             else:
                 n_pos = int(np.sum(y_clean == 1))
@@ -215,13 +211,16 @@ class FraudModelTrainer:
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=UserWarning)
             clf.fit(X_tr, y_tr)
-            raw_tr = clf.predict(X_tr)
-            raw_va = clf.predict(X_va)
+            # CRITICAL ML INVARIANT: Use raw_score=True to get continuous decision margins (logits).
+            # Avoids clf.predict() which collapses continuous predictions into binary [0, 1] class labels,
+            # destroying ranking resolution and distorting Platt probability calibration.
+            raw_tr = clf.predict(X_tr, raw_score=True)
+            raw_va = clf.predict(X_va, raw_score=True)
 
         raw_tr = np.asarray(raw_tr, dtype=np.float64).ravel()
         raw_va = np.asarray(raw_va, dtype=np.float64).ravel()
 
-        # Fit probability calibrator on validation split
+        # Fit probability calibrator on validation split using continuous decision margins
         calibrator = ProbabilityCalibrator(
             method=self.config.calibration_method,
             w_pos=self.config.w_pos,
