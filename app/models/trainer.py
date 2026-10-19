@@ -73,6 +73,9 @@ class TrainingResult:
     fraud_rate_val: float
     evaluation_protocol: str = "stratified"
     calibration_evaluation_independent: bool = True
+    is_pure_temporal: bool = False
+    val_fpr: float = 0.0
+    val_cost_loss: float = 0.0
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -81,6 +84,8 @@ class TrainingResult:
             "val_roc_auc": round(self.val_roc_auc, 6),
             "val_brier_score": round(self.val_brier_score, 6),
             "val_log_loss": round(self.val_log_loss, 6),
+            "val_fpr": round(self.val_fpr, 6),
+            "val_cost_loss": round(self.val_cost_loss, 4),
             "training_duration_sec": round(self.training_duration_sec, 4),
             "n_train_samples": self.n_train_samples,
             "n_val_samples": self.n_val_samples,
@@ -88,6 +93,7 @@ class TrainingResult:
             "fraud_rate_val": round(self.fraud_rate_val, 6),
             "evaluation_protocol": self.evaluation_protocol,
             "calibration_evaluation_independent": self.calibration_evaluation_independent,
+            "is_pure_temporal": self.is_pure_temporal,
         }
 
 
@@ -163,6 +169,7 @@ class FraudModelTrainer:
         t0 = time.perf_counter()
         X_clean, y_clean = self._sanitize_inputs(X, y)
         use_time_split = self.config.time_based_split if time_based_split is None else time_based_split
+        is_pure_temporal = False
         eval_protocol = "temporal_walk_forward" if use_time_split else "stratified_random"
 
         if (X_val is None) != (y_val is None):
@@ -177,12 +184,27 @@ class FraudModelTrainer:
                 X_tr, X_va = X_clean[:split_idx], X_clean[split_idx:]
                 y_tr, y_va = y_clean[:split_idx], y_clean[split_idx:]
                 if np.sum(y_va == 1) == 0:
-                    raise ValueError(
+                    warnings.warn(
                         f"Temporal validation slice (last {int(self.config.val_split*100)}%) contains 0 fraud instances. "
-                        "Cannot perform strict temporal evaluation without positive fraud labels in future holdout window. "
-                        "Provide a longer transaction stream horizon or explicitly set time_based_split=False if non-temporal split is desired."
+                        "Falling back to stratified random split to ensure positive fraud instances exist in evaluation set. "
+                        "Evaluation marked as is_pure_temporal=False.",
+                        UserWarning,
                     )
+                    eval_protocol = "stratified_fallback_due_to_zero_temporal_fraud"
+                    is_pure_temporal = False
+                    n_pos = int(np.sum(y_clean == 1))
+                    stratify = y_clean if n_pos >= 4 else None
+                    X_tr, X_va, y_tr, y_va = train_test_split(
+                        X_clean,
+                        y_clean,
+                        test_size=self.config.val_split,
+                        random_state=self.config.random_state,
+                        stratify=stratify,
+                    )
+                else:
+                    is_pure_temporal = True
             else:
+                is_pure_temporal = False
                 n_pos = int(np.sum(y_clean == 1))
                 stratify = y_clean if n_pos >= 4 else None
                 X_tr, X_va, y_tr, y_va = train_test_split(
@@ -196,6 +218,7 @@ class FraudModelTrainer:
             X_tr, y_tr = X_clean, y_clean
             X_va, y_va = self._sanitize_inputs(X_val, y_val)
             eval_protocol = "external_validation_set"
+            is_pure_temporal = bool(use_time_split)
 
         # Separate calibration set from independent evaluation set (P1 Evaluation Validity)
         # Calibrator is fitted strictly on (X_cal, y_cal), while Brier score, log loss, and PR-AUC
@@ -203,12 +226,19 @@ class FraudModelTrainer:
         n_pos_va = int(np.sum(y_va == 1))
         cal_eval_independent = True
         if n_pos_va >= 2 and len(y_va) >= 6:
-            if use_time_split:
+            if is_pure_temporal:
                 cal_idx = int(len(X_va) * 0.5)
                 if np.sum(y_va[:cal_idx] == 1) > 0 and np.sum(y_va[cal_idx:] == 1) > 0:
                     X_cal, X_eval = X_va[:cal_idx], X_va[cal_idx:]
                     y_cal, y_eval = y_va[:cal_idx], y_va[cal_idx:]
                 else:
+                    # Shuffled partition within holdout
+                    is_pure_temporal = False
+                    warnings.warn(
+                        "Temporal validation window lacked positive fraud instances in both sub-partitions. "
+                        "Shuffled stratified split applied to validation set; evaluation marked is_pure_temporal=False.",
+                        UserWarning,
+                    )
                     X_cal, X_eval, y_cal, y_eval = train_test_split(
                         X_va, y_va, test_size=0.5, random_state=self.config.random_state, stratify=y_va
                     )
@@ -300,6 +330,16 @@ class FraudModelTrainer:
         val_probs_clipped = np.clip(eval_probs, 1e-12, 1.0 - 1e-12)
         val_ll = float(log_loss(y_eval, val_probs_clipped, labels=[0, 1]))
 
+        # False Positive Rate (FPR) and Operational Cost on evaluation partition at default operating threshold tau=0.5
+        preds_binary = (eval_probs >= 0.5).astype(np.int32)
+        fp_count = int(np.sum((preds_binary == 1) & (y_eval == 0)))
+        neg_count = int(np.sum(y_eval == 0))
+        val_fpr = float(fp_count / neg_count) if neg_count > 0 else 0.0
+
+        # Cost-curve evaluation: C_FP * FP + C_FN * FN (using asymmetric cost weights from config)
+        fn_count = int(np.sum((preds_binary == 0) & (y_eval == 1)))
+        val_cost = float(5.0 * fp_count + (self.config.w_pos * 5.0) * fn_count)
+
         t1 = time.perf_counter()
 
         classifier = FraudClassifier(
@@ -322,6 +362,9 @@ class FraudModelTrainer:
             fraud_rate_val=float(np.mean(y_eval)),
             evaluation_protocol=eval_protocol,
             calibration_evaluation_independent=cal_eval_independent,
+            is_pure_temporal=is_pure_temporal,
+            val_fpr=val_fpr,
+            val_cost_loss=val_cost,
         )
 
     def train_from_stream(

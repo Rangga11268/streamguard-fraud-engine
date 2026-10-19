@@ -18,6 +18,7 @@ import shutil
 import tempfile
 import time
 import unittest
+import warnings
 from typing import List
 
 import numpy as np
@@ -523,6 +524,43 @@ class TestEndToEndStreamIntegration(unittest.TestCase):
         self.assertGreaterEqual(pred.calibrated_prob, 0.0)
         inf_target = 50.0 if os.environ.get("CI") else 15.0
         self.assertLess(pred.inference_latency_ms, inf_target)
+
+    def test_temporal_split_fallback_and_is_pure_temporal_contract(self) -> None:
+        """Verify temporal fallback behavior, is_pure_temporal flag, and metrics."""
+        np.random.seed(42)
+        X = np.random.randn(200, 16).astype(np.float32)
+        # All fraud instances concentrated in the first 50 samples; last 150 samples are pure zeros
+        y = np.zeros(200, dtype=np.int32)
+        y[:20] = 1
+
+        cfg = ModelTrainingConfig(n_estimators=10, time_based_split=True, val_split=0.20)
+        trainer = FraudModelTrainer(cfg)
+
+        # In temporal split, last 20% (indices 160-200) contains 0 frauds.
+        # Trainer must fallback to stratified split and set is_pure_temporal=False
+        with warnings.catch_warnings(record=True) as recorded_warns:
+            warnings.simplefilter("always")
+            res = trainer.train(X, y)
+            self.assertFalse(res.is_pure_temporal)
+            self.assertEqual(res.evaluation_protocol, "stratified_fallback_due_to_zero_temporal_fraud")
+            self.assertGreater(res.val_pr_auc, 0.0)
+            self.assertGreaterEqual(res.val_fpr, 0.0)
+            self.assertGreaterEqual(res.val_cost_loss, 0.0)
+            self.assertTrue(any("Falling back to stratified random split" in str(w.message) for w in recorded_warns))
+
+        # Now test case where temporal split HAS frauds across chronological calibration and evaluation holdouts
+        y_temporal = np.zeros(200, dtype=np.int32)
+        y_temporal[:10] = 1
+        y_temporal[165:175] = 1  # frauds in calibration half of holdout [160:180]
+        y_temporal[185:195] = 1  # frauds in evaluation half of holdout [180:200]
+        res_pure = trainer.train(X, y_temporal)
+        self.assertTrue(res_pure.is_pure_temporal)
+        self.assertEqual(res_pure.evaluation_protocol, "temporal_walk_forward")
+        d = res_pure.to_dict()
+        self.assertIn("is_pure_temporal", d)
+        self.assertIn("val_fpr", d)
+        self.assertIn("val_cost_loss", d)
+        self.assertTrue(d["is_pure_temporal"])
 
 
 if __name__ == "__main__":
