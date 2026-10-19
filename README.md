@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://python.org"><img src="https://img.shields.io/badge/Python-3.12-blue.svg" alt="Python 3.12"></a>
   <a href="https://github.com/Rangga11268/streamguard-fraud-engine/actions"><img src="https://github.com/Rangga11268/streamguard-fraud-engine/actions/workflows/ci.yml/badge.svg" alt="CI Pipeline"></a>
-  <a href="#"><img src="https://img.shields.io/badge/Tests-174%20Passing-brightgreen.svg" alt="Tests"></a>
+  <a href="#"><img src="https://img.shields.io/badge/Tests-177%20Passing-brightgreen.svg" alt="Tests"></a>
   <a href="#"><img src="https://img.shields.io/badge/Platform-Cross--Platform%20%7C%20Zero--Docker-success.svg" alt="Platform"></a>
   <a href="#"><img src="https://img.shields.io/badge/P99%20Latency-1.19ms%20(CPU)-orange.svg" alt="Latency"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>

@@ -30,7 +30,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Execute Master Test Suite (174 Tests)
+    - name: Execute Master Test Suite (177 Tests)
       env:
         PYTHONPATH: .
         CI: "true"

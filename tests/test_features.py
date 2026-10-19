@@ -438,6 +438,84 @@ class TestStreamingFeatureStore(unittest.TestCase):
         target_extraction = 20.0 if os.environ.get("CI") else 10.0
         self.assertLess(best_time_ms, target_extraction, f"Extraction latency {best_time_ms:.2f}ms exceeded {target_extraction}ms target")
 
+    def test_sliding_window_zero_future_leakage(self):
+        """
+        Proof of Zero Future Temporal Leakage:
+        Extracting features at time t (commit=False) must be strictly deterministic and
+        completely invariant to any future transactions committed at t_future > t.
+        """
+        store = StreamingFeatureStore()
+        base_t = 1729000000.0
+
+        # Past transactions at t-10m and t-2m (committed into history)
+        store.extract_features({
+            "transaction_id": "tx_past_1",
+            "customer_id": "cust_leak_test",
+            "card_id": "card_leak_test",
+            "timestamp": base_t - 600.0,
+            "amount": 50.0,
+            "merchant_category_code": "5411",
+            "latitude": 40.7128,
+            "longitude": -74.0060,
+        }, commit=True)
+        store.extract_features({
+            "transaction_id": "tx_past_2",
+            "customer_id": "cust_leak_test",
+            "card_id": "card_leak_test",
+            "timestamp": base_t - 120.0,
+            "amount": 75.0,
+            "merchant_category_code": "5812",
+            "latitude": 40.7130,
+            "longitude": -74.0055,
+        }, commit=True)
+
+        # 1. Extract feature vector at target timestamp base_t (commit=False to inspect state at t)
+        tx_t = {
+            "transaction_id": "tx_target",
+            "customer_id": "cust_leak_test",
+            "card_id": "card_leak_test",
+            "timestamp": base_t,
+            "amount": 100.0,
+            "merchant_category_code": "5411",
+            "latitude": 40.7135,
+            "longitude": -74.0050,
+        }
+        feat_before = store.extract_features(tx_t, commit=False).to_full_dict()
+
+        # 2. Simulate future transaction arrivals at t + 30s and t + 5m (committed to store)
+        store.extract_features({
+            "transaction_id": "tx_future_1",
+            "customer_id": "cust_leak_test",
+            "card_id": "card_leak_test",
+            "timestamp": base_t + 30.0,
+            "amount": 200.0,
+            "merchant_category_code": "5411",
+            "latitude": 40.7140,
+            "longitude": -74.0040,
+        }, commit=True)
+        store.extract_features({
+            "transaction_id": "tx_future_2",
+            "customer_id": "cust_leak_test",
+            "card_id": "card_leak_test",
+            "timestamp": base_t + 300.0,
+            "amount": 500.0,
+            "merchant_category_code": "5812",
+            "latitude": 40.7150,
+            "longitude": -74.0030,
+        }, commit=True)
+
+        # 3. Re-extract features at the historical timestamp base_t
+        feat_after = store.extract_features(tx_t, commit=False).to_full_dict()
+
+        # 4. Assert strict byte-level and numerical equality (zero leakage from future)
+        self.assertEqual(len(feat_before), len(feat_after))
+        for k in feat_before:
+            self.assertEqual(
+                feat_before[k],
+                feat_after[k],
+                f"Temporal leakage detected on feature '{k}': before={feat_before[k]}, after={feat_after[k]}"
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
