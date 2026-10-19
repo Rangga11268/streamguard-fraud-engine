@@ -459,9 +459,9 @@ class TestEndToEndStreamIntegration(unittest.TestCase):
         """Train directly on multi-phase synthetic stream and verify detection."""
         gen = SyntheticStreamGenerator(num_customers=50, random_seed=42)
         stream_events = list(gen.generate_multi_phase_stream(
-            n_baseline=400,
-            n_covariate=200,
-            n_attack=200,
+            n_baseline=300,
+            n_covariate=100,
+            n_attack=400,
             auto_enqueue_feedback=False,
         ))
 

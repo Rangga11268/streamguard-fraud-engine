@@ -71,6 +71,8 @@ class TrainingResult:
     n_val_samples: int
     fraud_rate_train: float
     fraud_rate_val: float
+    evaluation_protocol: str = "stratified"
+    calibration_evaluation_independent: bool = True
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -84,6 +86,8 @@ class TrainingResult:
             "n_val_samples": self.n_val_samples,
             "fraud_rate_train": round(self.fraud_rate_train, 6),
             "fraud_rate_val": round(self.fraud_rate_val, 6),
+            "evaluation_protocol": self.evaluation_protocol,
+            "calibration_evaluation_independent": self.calibration_evaluation_independent,
         }
 
 
@@ -159,6 +163,7 @@ class FraudModelTrainer:
         t0 = time.perf_counter()
         X_clean, y_clean = self._sanitize_inputs(X, y)
         use_time_split = self.config.time_based_split if time_based_split is None else time_based_split
+        eval_protocol = "temporal_walk_forward" if use_time_split else "stratified_random"
 
         # Train / validation split
         if X_val is None or y_val is None:
@@ -169,18 +174,11 @@ class FraudModelTrainer:
                 X_tr, X_va = X_clean[:split_idx], X_clean[split_idx:]
                 y_tr, y_va = y_clean[:split_idx], y_clean[split_idx:]
                 if np.sum(y_va == 1) == 0:
-                    if np.sum(y_clean == 1) >= 2:
-                        warnings.warn(
-                            f"Temporal validation slice (last {int(self.config.val_split*100)}%) contains 0 fraud instances; "
-                            "falling back to stratified split to preserve validation signal."
-                        )
-                        X_tr, X_va, y_tr, y_va = train_test_split(
-                            X_clean,
-                            y_clean,
-                            test_size=self.config.val_split,
-                            random_state=self.config.random_state,
-                            stratify=y_clean,
-                        )
+                    raise ValueError(
+                        f"Temporal validation slice (last {int(self.config.val_split*100)}%) contains 0 fraud instances. "
+                        "Cannot perform strict temporal evaluation without positive fraud labels in future holdout window. "
+                        "Provide a longer transaction stream horizon or explicitly set time_based_split=False if non-temporal split is desired."
+                    )
             else:
                 n_pos = int(np.sum(y_clean == 1))
                 stratify = y_clean if n_pos >= 4 else None
@@ -194,11 +192,13 @@ class FraudModelTrainer:
         else:
             X_tr, y_tr = X_clean, y_clean
             X_va, y_va = self._sanitize_inputs(X_val, y_val)
+            eval_protocol = "external_validation_set"
 
         # Separate calibration set from independent evaluation set (P1 Evaluation Validity)
         # Calibrator is fitted strictly on (X_cal, y_cal), while Brier score, log loss, and PR-AUC
         # are measured on the unseen (X_eval, y_eval) test partition.
         n_pos_va = int(np.sum(y_va == 1))
+        cal_eval_independent = True
         if n_pos_va >= 2 and len(y_va) >= 6:
             if use_time_split:
                 cal_idx = int(len(X_va) * 0.5)
@@ -214,7 +214,14 @@ class FraudModelTrainer:
                     X_va, y_va, test_size=0.5, random_state=self.config.random_state, stratify=y_va
                 )
         else:
-            # Extreme imbalance / single fraud instance fallback
+            # Extreme imbalance / single fraud instance fallback:
+            # Explicitly mark that calibration and evaluation are not independent.
+            cal_eval_independent = False
+            warnings.warn(
+                f"Validation set has insufficient fraud instances ({n_pos_va} < 2) to cleanly partition into "
+                "disjoint calibration and evaluation sets. Metrics are computed on the calibration set and marked non-independent.",
+                UserWarning,
+            )
             X_cal, X_eval = X_va, X_va
             y_cal, y_eval = y_va, y_va
 
@@ -310,6 +317,8 @@ class FraudModelTrainer:
             n_val_samples=len(X_eval),
             fraud_rate_train=float(np.mean(y_tr)),
             fraud_rate_val=float(np.mean(y_eval)),
+            evaluation_protocol=eval_protocol,
+            calibration_evaluation_independent=cal_eval_independent,
         )
 
     def train_from_stream(
