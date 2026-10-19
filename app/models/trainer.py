@@ -50,6 +50,7 @@ class ModelTrainingConfig:
     gamma: float = 0.0
     calibration_method: str = "platt"
     val_split: float = 0.20
+    time_based_split: bool = True  # Avoids look-ahead temporal data leakage in streaming transactions
     random_state: int = 42
     n_jobs: int = 1  # STRICT Windows single-process requirement
     verbose: int = -1
@@ -155,15 +156,31 @@ class FraudModelTrainer:
 
         # Train / validation split
         if X_val is None or y_val is None:
-            n_pos = int(np.sum(y_clean == 1))
-            stratify = y_clean if n_pos >= 4 else None
-            X_tr, X_va, y_tr, y_va = train_test_split(
-                X_clean,
-                y_clean,
-                test_size=self.config.val_split,
-                random_state=self.config.random_state,
-                stratify=stratify,
-            )
+            if self.config.time_based_split:
+                # Temporal Walk-Forward split: train on earlier transactions, validate on future
+                # Eliminates look-ahead temporal data leakage in non-stationary fraud streams
+                split_idx = int(len(X_clean) * (1.0 - self.config.val_split))
+                X_tr, X_va = X_clean[:split_idx], X_clean[split_idx:]
+                y_tr, y_va = y_clean[:split_idx], y_clean[split_idx:]
+                # Fallback to stratified random split only if validation slice has 0 fraud instances
+                if np.sum(y_va == 1) == 0 and np.sum(y_clean == 1) >= 4:
+                    X_tr, X_va, y_tr, y_va = train_test_split(
+                        X_clean,
+                        y_clean,
+                        test_size=self.config.val_split,
+                        random_state=self.config.random_state,
+                        stratify=y_clean,
+                    )
+            else:
+                n_pos = int(np.sum(y_clean == 1))
+                stratify = y_clean if n_pos >= 4 else None
+                X_tr, X_va, y_tr, y_va = train_test_split(
+                    X_clean,
+                    y_clean,
+                    test_size=self.config.val_split,
+                    random_state=self.config.random_state,
+                    stratify=stratify,
+                )
         else:
             X_tr, y_tr = X_clean, y_clean
             X_va, y_va = self._sanitize_inputs(X_val, y_val)

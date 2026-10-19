@@ -146,6 +146,16 @@ class StreamingFeatureStore:
         lat = float(tx_event.latitude)
         lon = float(tx_event.longitude)
 
+        # Streaming input boundary contracts
+        if amt < 0.0:
+            raise ValueError(f"Transaction amount cannot be negative, got: {amt}")
+        if ts <= 0.0:
+            raise ValueError(f"Transaction timestamp must be strictly positive, got: {ts}")
+        if not (-90.0 <= lat <= 90.0):
+            raise ValueError(f"Latitude out of valid physical bounds [-90, 90], got: {lat}")
+        if not (-180.0 <= lon <= 180.0):
+            raise ValueError(f"Longitude out of valid physical bounds [-180, 180], got: {lon}")
+
         # Retrieve entity windows
         cust_window = self._get_or_create_customer(cust_id)
         card_window = self._get_or_create_card(card_id)
