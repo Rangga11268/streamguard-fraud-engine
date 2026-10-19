@@ -71,12 +71,13 @@ Benchmark Results (Verified via `benchmarks/benchmark_engine.py` on Python 3.12 
 | **PSI Drift Detection Latency** | $\le 200\text{ samples}$ | **74 – 150 samples** | **Early alert triggered before label arrival** |
 | **3-Tier Financial Loss Reduction** | $\ge 25.0\%$ | **40.33% simulated loss reduction** | **Verified vs fixed $\tau = 0.5$ threshold** |
 | **Interactive Terminal Demo Runtime** | $< 60.0\text{ s}$ | **19.0 s** | **3.1x faster** |
-| **Master Test Suite Passing** | 100% Pass | **174 / 174 Tests Passing** | **Automated regression suite verified** |
+| **Master Test Suite Passing** | 100% Pass | **176 / 176 Tests Passing** | **Automated regression suite verified on Windows & Linux** |
 
 > [!NOTE]
 > **Experimental Context & Production Generalization:**
+> * **Temporal Walk-Forward Evaluation:** Training, probability calibration, and final evaluation are strictly partitioned chronologically ($\text{timestamp}_{\text{train}} \le \text{timestamp}_{\text{cal}} \le \text{timestamp}_{\text{eval}}$) to guarantee zero temporal look-ahead leakage. If holdout data contains insufficient fraud labels, an explicit fallback flag `is_pure_temporal=False` is recorded in telemetry.
+> * **Cost-Optimal Operating Threshold:** Rather than naively optimizing accuracy on imbalanced data (<0.1% fraud), the operational decision boundary $\tau^*$ is selected by minimizing asymmetric business cost: $C(\tau) = C_{\text{FP}} \cdot \text{FP}(\tau) + C_{\text{FN}} \cdot \text{FN}(\tau)$. Telemetry logs track False Positive Rate (FPR), Precision, Recall, F1, and manual review queue volume.
 > * **Simulated Stream Scope:** The 40.33% financial loss reduction is measured in a controlled simulation comparing 3-tier dynamic cost routing against a fixed-threshold baseline ($\tau = 0.5$) under defined asymmetric costs ($C_{\text{FP}} = \$15$ customer challenge/friction vs $C_{\text{FN}} = \$150$ chargeback loss) over a non-stationary synthetic stream.
-> * **Production Considerations:** In real-world card network deployments, loss reduction scales with transaction volume and issuer-specific interchange dispute costs. The synthetic generator models realistic multi-regime drift, but real bank streams require periodic threshold recalculation as macro-economic consumer behavior evolves.
 > * **Latency Environment:** Latency metrics (0.91ms - 1.30ms P99) represent native single-core Python 3.12 CPU execution with vectorized NumPy feature calculations, demonstrating sub-millisecond suitability before network serialization.
 
 ---

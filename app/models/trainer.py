@@ -76,6 +76,11 @@ class TrainingResult:
     is_pure_temporal: bool = False
     val_fpr: float = 0.0
     val_cost_loss: float = 0.0
+    val_precision: float = 0.0
+    val_recall: float = 0.0
+    val_f1: float = 0.0
+    optimal_threshold: float = 0.5
+    review_queue_rate: float = 0.0
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -86,6 +91,11 @@ class TrainingResult:
             "val_log_loss": round(self.val_log_loss, 6),
             "val_fpr": round(self.val_fpr, 6),
             "val_cost_loss": round(self.val_cost_loss, 4),
+            "val_precision": round(self.val_precision, 6),
+            "val_recall": round(self.val_recall, 6),
+            "val_f1": round(self.val_f1, 6),
+            "optimal_threshold": round(self.optimal_threshold, 4),
+            "review_queue_rate": round(self.review_queue_rate, 6),
             "training_duration_sec": round(self.training_duration_sec, 4),
             "n_train_samples": self.n_train_samples,
             "n_val_samples": self.n_val_samples,
@@ -330,15 +340,32 @@ class FraudModelTrainer:
         val_probs_clipped = np.clip(eval_probs, 1e-12, 1.0 - 1e-12)
         val_ll = float(log_loss(y_eval, val_probs_clipped, labels=[0, 1]))
 
-        # False Positive Rate (FPR) and Operational Cost on evaluation partition at default operating threshold tau=0.5
-        preds_binary = (eval_probs >= 0.5).astype(np.int32)
-        fp_count = int(np.sum((preds_binary == 1) & (y_eval == 0)))
-        neg_count = int(np.sum(y_eval == 0))
-        val_fpr = float(fp_count / neg_count) if neg_count > 0 else 0.0
+        # Cost-optimal operational threshold selection
+        threshold_candidates = np.linspace(0.01, 0.99, 99)
+        best_cost = float("inf")
+        best_tau = 0.5
+        for tau in threshold_candidates:
+            p_bin = (eval_probs >= tau).astype(np.int32)
+            fp_c = int(np.sum((p_bin == 1) & (y_eval == 0)))
+            fn_c = int(np.sum((p_bin == 0) & (y_eval == 1)))
+            c_tot = float(5.0 * fp_c + (self.config.w_pos * 5.0) * fn_c)
+            if c_tot < best_cost:
+                best_cost = c_tot
+                best_tau = float(tau)
 
-        # Cost-curve evaluation: C_FP * FP + C_FN * FN (using asymmetric cost weights from config)
-        fn_count = int(np.sum((preds_binary == 0) & (y_eval == 1)))
-        val_cost = float(5.0 * fp_count + (self.config.w_pos * 5.0) * fn_count)
+        # Metrics at cost-optimal threshold
+        opt_bin = (eval_probs >= best_tau).astype(np.int32)
+        tp_count = int(np.sum((opt_bin == 1) & (y_eval == 1)))
+        fp_opt = int(np.sum((opt_bin == 1) & (y_eval == 0)))
+        fn_opt = int(np.sum((opt_bin == 0) & (y_eval == 1)))
+        neg_count = int(np.sum(y_eval == 0))
+
+        val_fpr = float(fp_opt / neg_count) if neg_count > 0 else 0.0
+        val_precision = float(tp_count / (tp_count + fp_opt)) if (tp_count + fp_opt) > 0 else 0.0
+        val_recall = float(tp_count / (tp_count + fn_opt)) if (tp_count + fn_opt) > 0 else 0.0
+        val_f1 = float(2 * val_precision * val_recall / (val_precision + val_recall)) if (val_precision + val_recall) > 0 else 0.0
+        review_queue_rate = float(np.mean(opt_bin))
+        val_cost = best_cost
 
         t1 = time.perf_counter()
 
@@ -365,6 +392,11 @@ class FraudModelTrainer:
             is_pure_temporal=is_pure_temporal,
             val_fpr=val_fpr,
             val_cost_loss=val_cost,
+            val_precision=val_precision,
+            val_recall=val_recall,
+            val_f1=val_f1,
+            optimal_threshold=best_tau,
+            review_queue_rate=review_queue_rate,
         )
 
     def train_from_stream(

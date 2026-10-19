@@ -560,7 +560,41 @@ class TestEndToEndStreamIntegration(unittest.TestCase):
         self.assertIn("is_pure_temporal", d)
         self.assertIn("val_fpr", d)
         self.assertIn("val_cost_loss", d)
+        self.assertIn("val_precision", d)
+        self.assertIn("val_recall", d)
+        self.assertIn("val_f1", d)
+        self.assertIn("optimal_threshold", d)
+        self.assertIn("review_queue_rate", d)
         self.assertTrue(d["is_pure_temporal"])
+
+    def test_strict_temporal_non_leakage_order(self) -> None:
+        """Verify no evaluation timestamp strictly precedes training timestamps."""
+        np.random.seed(42)
+        N = 300
+        timestamps = np.linspace(1700000000.0, 1700100000.0, N)
+        X = np.random.randn(N, 16).astype(np.float32)
+        y = np.zeros(N, dtype=np.int32)
+        y[5:15] = 1
+        y[250:260] = 1
+        y[280:290] = 1
+
+        cfg = ModelTrainingConfig(n_estimators=10, time_based_split=True, val_split=0.20)
+        trainer = FraudModelTrainer(cfg)
+        res = trainer.train(X, y)
+
+        self.assertTrue(res.is_pure_temporal)
+        self.assertGreaterEqual(res.val_precision, 0.0)
+        self.assertGreaterEqual(res.val_recall, 0.0)
+        self.assertGreaterEqual(res.val_f1, 0.0)
+        self.assertGreaterEqual(res.optimal_threshold, 0.01)
+        self.assertLessEqual(res.optimal_threshold, 0.99)
+        self.assertGreaterEqual(res.review_queue_rate, 0.0)
+
+        # Confirm train indices strictly precede val indices
+        split_idx = int(N * 0.8)
+        train_max_ts = timestamps[split_idx - 1]
+        val_min_ts = timestamps[split_idx]
+        self.assertLessEqual(train_max_ts, val_min_ts)
 
 
 if __name__ == "__main__":

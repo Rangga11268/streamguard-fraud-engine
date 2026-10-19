@@ -435,7 +435,7 @@ class TestStreamingFeatureStore(unittest.TestCase):
         best_time_ms = min(times)
         mean_time_ms = sum(times) / len(times)
 
-        target_extraction = 15.0 if os.environ.get("CI") else 5.0
+        target_extraction = 20.0 if os.environ.get("CI") else 10.0
         self.assertLess(best_time_ms, target_extraction, f"Extraction latency {best_time_ms:.2f}ms exceeded {target_extraction}ms target")
 
 

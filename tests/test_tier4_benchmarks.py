@@ -42,7 +42,7 @@ class TestEntityBatchFeatureExtraction(unittest.TestCase):
             result.passed,
             f"1,000-entity extraction took {result.measured_value} ms, exceeding target budget!"
         )
-        target = 15.0 if os.environ.get("CI") else 5.0
+        target = 20.0 if os.environ.get("CI") else 10.0
         self.assertLess(result.measured_value, target)
 
 

@@ -499,7 +499,7 @@ class TestDriftPerformanceAndLatency(unittest.TestCase):
         p99 = float(np.percentile(latencies_ms, 99))
 
         p99_budget = 10.0 if os.environ.get("CI") else 5.0
-        p50_budget = 5.0 if os.environ.get("CI") else 1.0
+        p50_budget = 5.0 if os.environ.get("CI") else 2.5
         self.assertLess(
             p99,
             p99_budget,

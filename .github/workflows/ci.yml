@@ -31,17 +31,29 @@ jobs:
         pip install -r requirements.txt
 
     - name: Execute Master Test Suite (174 Tests)
+      env:
+        PYTHONPATH: .
+        CI: "true"
       run: |
-        pytest tests -v
+        python -m pytest tests -v
 
     - name: Execute Tiered Test Runner
+      env:
+        PYTHONPATH: .
+        CI: "true"
       run: |
         python run_tests.py --tier all
 
     - name: Execute Adversarial Stress Suite
+      env:
+        PYTHONPATH: .
+        CI: "true"
       run: |
         python run_tests.py --adversarial
 
     - name: Run Interactive 5-Act Demo Simulation
+      env:
+        PYTHONPATH: .
+        CI: "true"
       run: |
         python demo.py
