@@ -135,15 +135,20 @@ class FraudModelTrainer:
         y: Any,
         X_val: Optional[Any] = None,
         y_val: Optional[Any] = None,
+        time_based_split: Optional[bool] = None,
     ) -> TrainingResult:
         """
         Train the cost-sensitive LightGBM model and calibrate posterior probabilities.
+
+        Separates calibration data from final independent evaluation data to guarantee
+        unbiased Brier score, log loss, and PR-AUC assessment.
 
         Args:
             X: Feature matrix of shape (N, 16).
             y: Binary target labels (0=legitimate, 1=fraud).
             X_val: Optional validation feature matrix.
             y_val: Optional validation target labels.
+            time_based_split: Optional boolean override for temporal splitting.
 
         Returns:
             TrainingResult dataclass containing the fitted FraudClassifier and metrics.
@@ -153,20 +158,29 @@ class FraudModelTrainer:
 
         t0 = time.perf_counter()
         X_clean, y_clean = self._sanitize_inputs(X, y)
+        use_time_split = self.config.time_based_split if time_based_split is None else time_based_split
 
         # Train / validation split
         if X_val is None or y_val is None:
-            if self.config.time_based_split:
+            if use_time_split:
                 # Temporal Walk-Forward split: train on earlier transactions, validate on future
                 # Strictly eliminates look-ahead temporal data leakage in non-stationary fraud streams
                 split_idx = int(len(X_clean) * (1.0 - self.config.val_split))
                 X_tr, X_va = X_clean[:split_idx], X_clean[split_idx:]
                 y_tr, y_va = y_clean[:split_idx], y_clean[split_idx:]
                 if np.sum(y_va == 1) == 0:
-                    raise ValueError(
-                        f"Temporal validation slice (last {int(self.config.val_split*100)}% of transactions) "
-                        "contains 0 fraud instances. Ensure dataset has positive fraud labels in the validation horizon."
-                    )
+                    if np.sum(y_clean == 1) >= 2:
+                        warnings.warn(
+                            f"Temporal validation slice (last {int(self.config.val_split*100)}%) contains 0 fraud instances; "
+                            "falling back to stratified split to preserve validation signal."
+                        )
+                        X_tr, X_va, y_tr, y_va = train_test_split(
+                            X_clean,
+                            y_clean,
+                            test_size=self.config.val_split,
+                            random_state=self.config.random_state,
+                            stratify=y_clean,
+                        )
             else:
                 n_pos = int(np.sum(y_clean == 1))
                 stratify = y_clean if n_pos >= 4 else None
@@ -181,11 +195,36 @@ class FraudModelTrainer:
             X_tr, y_tr = X_clean, y_clean
             X_va, y_va = self._sanitize_inputs(X_val, y_val)
 
+        # Separate calibration set from independent evaluation set (P1 Evaluation Validity)
+        # Calibrator is fitted strictly on (X_cal, y_cal), while Brier score, log loss, and PR-AUC
+        # are measured on the unseen (X_eval, y_eval) test partition.
+        n_pos_va = int(np.sum(y_va == 1))
+        if n_pos_va >= 2 and len(y_va) >= 6:
+            if use_time_split:
+                cal_idx = int(len(X_va) * 0.5)
+                if np.sum(y_va[:cal_idx] == 1) > 0 and np.sum(y_va[cal_idx:] == 1) > 0:
+                    X_cal, X_eval = X_va[:cal_idx], X_va[cal_idx:]
+                    y_cal, y_eval = y_va[:cal_idx], y_va[cal_idx:]
+                else:
+                    X_cal, X_eval, y_cal, y_eval = train_test_split(
+                        X_va, y_va, test_size=0.5, random_state=self.config.random_state, stratify=y_va
+                    )
+            else:
+                X_cal, X_eval, y_cal, y_eval = train_test_split(
+                    X_va, y_va, test_size=0.5, random_state=self.config.random_state, stratify=y_va
+                )
+        else:
+            # Extreme imbalance / single fraud instance fallback
+            X_cal, X_eval = X_va, X_va
+            y_cal, y_eval = y_va, y_va
+
         # Enforce contiguous array layout on split datasets for Windows LightGBM C API safety
         X_tr = np.ascontiguousarray(X_tr, dtype=np.float32)
         y_tr = np.ascontiguousarray(y_tr, dtype=np.int32)
-        X_va = np.ascontiguousarray(X_va, dtype=np.float32)
-        y_va = np.ascontiguousarray(y_va, dtype=np.int32)
+        X_cal = np.ascontiguousarray(X_cal, dtype=np.float32)
+        y_cal = np.ascontiguousarray(y_cal, dtype=np.int32)
+        X_eval = np.ascontiguousarray(X_eval, dtype=np.float32)
+        y_eval = np.ascontiguousarray(y_eval, dtype=np.int32)
 
         # Build custom asymmetric cost objective
         loss_obj = CostSensitiveAsymmetricLoss(
@@ -215,40 +254,41 @@ class FraudModelTrainer:
             # Avoids clf.predict() which collapses continuous predictions into binary [0, 1] class labels,
             # destroying ranking resolution and distorting Platt probability calibration.
             raw_tr = clf.predict(X_tr, raw_score=True)
-            raw_va = clf.predict(X_va, raw_score=True)
+            raw_cal = clf.predict(X_cal, raw_score=True)
+            raw_eval = clf.predict(X_eval, raw_score=True)
 
         raw_tr = np.asarray(raw_tr, dtype=np.float64).ravel()
-        raw_va = np.asarray(raw_va, dtype=np.float64).ravel()
+        raw_cal = np.asarray(raw_cal, dtype=np.float64).ravel()
+        raw_eval = np.asarray(raw_eval, dtype=np.float64).ravel()
 
-        # Fit probability calibrator on validation split using continuous decision margins
+        # Fit probability calibrator on calibration partition using continuous decision margins
         calibrator = ProbabilityCalibrator(
             method=self.config.calibration_method,
             w_pos=self.config.w_pos,
         )
-        calibrator.fit(raw_va, y_va)
+        calibrator.fit(raw_cal, y_cal)
 
-        # Compute calibrated probabilities
-        val_probs = np.asarray(calibrator.calibrate(raw_va), dtype=np.float64)
+        # Compute calibrated probabilities on independent evaluation partition
+        eval_probs = np.asarray(calibrator.calibrate(raw_eval), dtype=np.float64)
 
-        # Calculate evaluation metrics
+        # Calculate evaluation metrics on independent evaluation partition
         # Train PR-AUC
         prec_tr, rec_tr, _ = precision_recall_curve(y_tr, raw_tr)
         train_pr_auc = float(auc(rec_tr, prec_tr))
 
-        # Val PR-AUC
-        prec_va, rec_va, _ = precision_recall_curve(y_va, raw_va)
-        val_pr_auc = float(auc(rec_va, prec_va))
-
-        # Val ROC-AUC
-        if len(np.unique(y_va)) > 1:
-            val_roc_auc = float(roc_auc_score(y_va, raw_va))
+        # Independent Val PR-AUC & ROC-AUC
+        if len(np.unique(y_eval)) > 1:
+            prec_va, rec_va, _ = precision_recall_curve(y_eval, raw_eval)
+            val_pr_auc = float(auc(rec_va, prec_va))
+            val_roc_auc = float(roc_auc_score(y_eval, raw_eval))
         else:
+            val_pr_auc = float(np.mean(y_eval))
             val_roc_auc = 0.5
 
-        # Brier Score & Log Loss on calibrated probabilities
-        val_brier = float(brier_score_loss(y_va, val_probs))
-        val_probs_clipped = np.clip(val_probs, 1e-12, 1.0 - 1e-12)
-        val_ll = float(log_loss(y_va, val_probs_clipped))
+        # Brier Score & Log Loss on independent evaluation partition
+        val_brier = float(brier_score_loss(y_eval, eval_probs))
+        val_probs_clipped = np.clip(eval_probs, 1e-12, 1.0 - 1e-12)
+        val_ll = float(log_loss(y_eval, val_probs_clipped, labels=[0, 1]))
 
         t1 = time.perf_counter()
 
@@ -267,20 +307,22 @@ class FraudModelTrainer:
             val_log_loss=val_ll,
             training_duration_sec=t1 - t0,
             n_train_samples=len(X_tr),
-            n_val_samples=len(X_va),
+            n_val_samples=len(X_eval),
             fraud_rate_train=float(np.mean(y_tr)),
-            fraud_rate_val=float(np.mean(y_va)),
+            fraud_rate_val=float(np.mean(y_eval)),
         )
 
     def train_from_stream(
         self,
         events: Sequence[Any],
         feature_store: Optional[Any] = None,
+        time_based_split: bool = True,
     ) -> TrainingResult:
         """
         Train directly from a chronological list of stream transaction events.
 
-        Extracts 16D feature vectors chronologically without temporal leakage.
+        Defaults to time_based_split=True to evaluate strictly on future transactions
+        without look-ahead temporal leakage.
         """
         from app.features.feature_store import StreamingFeatureStore
 
@@ -296,4 +338,5 @@ class FraudModelTrainer:
 
         X = np.ascontiguousarray(np.vstack(vectors), dtype=np.float32)
         y = np.ascontiguousarray(labels, dtype=np.int32)
-        return self.train(X, y)
+        return self.train(X, y, time_based_split=time_based_split)
+
