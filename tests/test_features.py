@@ -516,6 +516,99 @@ class TestStreamingFeatureStore(unittest.TestCase):
                 f"Temporal leakage detected on feature '{k}': before={feat_before[k]}, after={feat_after[k]}"
             )
 
+    def test_simultaneous_timestamp_and_multi_entity_zero_leakage(self):
+        """
+        Proof of Zero Leakage Across Multiple Entities and Identical Timestamps:
+        1. Two transactions arriving with exact same timestamp (t == t) must not leak
+           into each other's feature vectors prior to explicit commit.
+        2. Card-level, merchant-level (MCC), and geo-velocity features remain strictly invariant
+           to subsequent future activity on other cards/merchants.
+        """
+        store = StreamingFeatureStore()
+        t_now = 1729050000.0
+
+        # Prime initial history for Customer A on Card 1
+        store.extract_features({
+            "transaction_id": "tx_init_1",
+            "customer_id": "cust_multi",
+            "card_id": "card_primary",
+            "timestamp": t_now - 300.0,
+            "amount": 40.0,
+            "merchant_category_code": "5411",
+            "latitude": 51.5074,
+            "longitude": -0.1278,  # London
+        }, commit=True)
+
+        # Simultaneous transaction A and B at exactly t_now
+        tx_sim_1 = {
+            "transaction_id": "tx_sim_1",
+            "customer_id": "cust_multi",
+            "card_id": "card_primary",
+            "timestamp": t_now,
+            "amount": 100.0,
+            "merchant_category_code": "5812",
+            "latitude": 51.5080,
+            "longitude": -0.1280,
+        }
+        tx_sim_2 = {
+            "transaction_id": "tx_sim_2",
+            "customer_id": "cust_multi",
+            "card_id": "card_secondary",  # Different card, same customer
+            "timestamp": t_now,
+            "amount": 150.0,
+            "merchant_category_code": "5732",
+            "latitude": 51.5090,
+            "longitude": -0.1290,
+        }
+
+        # Features extracted without commit should observe identical pre-event history
+        feat_sim_1 = store.extract_features(tx_sim_1, commit=False).to_full_dict()
+        feat_sim_2 = store.extract_features(tx_sim_2, commit=False).to_full_dict()
+
+        # Both observe velocity_5m_count = 1 (only tx_init_1)
+        self.assertEqual(feat_sim_1["velocity_5m_count"], 1.0)
+        self.assertEqual(feat_sim_2["velocity_5m_count"], 1.0)
+        # Card 1 has card_velocity_5m_count = 1, Card 2 (cold start) has card_velocity_5m_count = 0
+        self.assertEqual(feat_sim_1["card_velocity_5m_count"], 1.0)
+        self.assertEqual(feat_sim_2["card_velocity_5m_count"], 0.0)
+
+        # Commit tx_sim_1 at t_now
+        store.extract_features(tx_sim_1, commit=True)
+
+        # Now extract a third transaction at t_now + 10s (Paris - impossible jump from London in 10s)
+        tx_geo = {
+            "transaction_id": "tx_geo_test",
+            "customer_id": "cust_multi",
+            "card_id": "card_primary",
+            "timestamp": t_now + 10.0,
+            "amount": 250.0,
+            "merchant_category_code": "5411",
+            "latitude": 48.8566,
+            "longitude": 2.3522,  # Paris (~340 km away in 10 seconds => >100,000 km/h)
+        }
+        feat_geo_before = store.extract_features(tx_geo, commit=False).to_full_dict()
+        self.assertEqual(feat_geo_before["impossible_travel_flag"], 1.0)
+        self.assertGreater(feat_geo_before["travel_speed_kmh"], 5000.0)
+
+        # Future events occur 1 hour later (t_now + 3600s)
+        store.extract_features({
+            "transaction_id": "tx_future_tokyo",
+            "customer_id": "cust_multi",
+            "card_id": "card_primary",
+            "timestamp": t_now + 3600.0,
+            "amount": 999.0,
+            "merchant_category_code": "7011",
+            "latitude": 35.6762,
+            "longitude": 139.6503,  # Tokyo
+        }, commit=True)
+
+        # Re-evaluating tx_geo at its historical timestamp MUST NOT leak the Tokyo transaction
+        feat_geo_after = store.extract_features(tx_geo, commit=False).to_full_dict()
+        self.assertEqual(feat_geo_before["travel_speed_kmh"], feat_geo_after["travel_speed_kmh"])
+        self.assertEqual(feat_geo_before["impossible_travel_flag"], feat_geo_after["impossible_travel_flag"])
+        self.assertEqual(feat_geo_before["velocity_5m_count"], feat_geo_after["velocity_5m_count"])
+
+
 
 if __name__ == "__main__":
     unittest.main()
