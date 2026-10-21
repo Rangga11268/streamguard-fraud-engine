@@ -36,7 +36,11 @@ class TransactionEntityEvent:
     longitude: float
 
     def __post_init__(self) -> None:
-        """Validate physical boundaries and finite numeric properties."""
+        """Validate physical boundaries, non-empty identifiers, and finite numeric properties."""
+        if not self.customer_id or not self.customer_id.strip():
+            raise ValueError("customer_id cannot be empty or whitespace-only")
+        if not self.card_id or not self.card_id.strip():
+            raise ValueError("card_id cannot be empty or whitespace-only")
         if not math.isfinite(self.amount) or self.amount < 0.0:
             raise ValueError(f"Transaction amount must be a finite non-negative real number, got: {self.amount}")
         if not math.isfinite(self.timestamp) or self.timestamp <= 0.0:
@@ -159,6 +163,10 @@ class StreamingFeatureStore:
         lon = float(tx_event.longitude)
 
         # Streaming input boundary contracts
+        if not cust_id or not cust_id.strip():
+            raise ValueError("customer_id cannot be empty or whitespace-only")
+        if not card_id or not card_id.strip():
+            raise ValueError("card_id cannot be empty or whitespace-only")
         if not math.isfinite(amt) or amt < 0.0:
             raise ValueError(f"Transaction amount must be a finite non-negative real number, got: {amt}")
         if not math.isfinite(ts) or ts <= 0.0:

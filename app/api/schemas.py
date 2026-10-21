@@ -50,6 +50,13 @@ class ScoreRequest(BaseModel):
     device_id: str = Field(default="", description="Originating client device identifier")
     ip_address: str = Field(default="", description="Client IP address")
 
+    @field_validator("customer_id", "card_id")
+    @classmethod
+    def validate_non_empty_identifiers(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Entity identifier cannot be empty or whitespace-only")
+        return v.strip()
+
     @field_validator("amount", "timestamp")
     @classmethod
     def validate_finite_numerics(cls, v: float) -> float:

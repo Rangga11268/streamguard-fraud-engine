@@ -659,6 +659,80 @@ class TestNonFiniteInputGuards(unittest.TestCase):
                 event_dict = dict(self.base_event, longitude=bad_val)
                 self.store.extract_features(event_dict)
 
+    def test_reject_empty_and_whitespace_identifiers(self):
+        for bad_id in ["", "   ", "\t\n"]:
+            with self.assertRaises(ValueError):
+                event_dict = dict(self.base_event, customer_id=bad_id)
+                self.store.extract_features(event_dict)
+
+            with self.assertRaises(ValueError):
+                event_dict = dict(self.base_event, card_id=bad_id)
+                self.store.extract_features(event_dict)
+
+            with self.assertRaises(ValueError):
+                TransactionEntityEvent(
+                    transaction_id="tx_1",
+                    customer_id=bad_id,
+                    card_id="card_1",
+                    amount=50.0,
+                    timestamp=1000.0,
+                    merchant_category_code="5411",
+                    latitude=40.0,
+                    longitude=-74.0,
+                )
+
+    def test_temporal_leakage_extended_future_stream(self):
+        """Verifies that injecting future transactions never mutates historical feature outputs."""
+        store = StreamingFeatureStore()
+        t_hist = 2000.0
+        
+        # Commit base historical events
+        store.extract_features({
+            "transaction_id": "tx_h1",
+            "customer_id": "cust_leak_test",
+            "card_id": "card_leak_test",
+            "timestamp": t_hist - 100.0,
+            "amount": 50.0,
+            "merchant_category_code": "5411",
+            "latitude": 40.7128,
+            "longitude": -74.0060,
+        }, commit=True)
+
+        target_tx = {
+            "transaction_id": "tx_target",
+            "customer_id": "cust_leak_test",
+            "card_id": "card_leak_test",
+            "timestamp": t_hist,
+            "amount": 75.0,
+            "merchant_category_code": "5411",
+            "latitude": 40.7130,
+            "longitude": -74.0055,
+        }
+        baseline_features = store.extract_features(target_tx, commit=False).to_full_dict()
+
+        # Ingest aggressive future activity (large amounts, remote locations)
+        for i, dt in enumerate([60.0, 300.0, 1800.0, 7200.0]):
+            store.extract_features({
+                "transaction_id": f"tx_future_{i}",
+                "customer_id": "cust_leak_test",
+                "card_id": "card_leak_test",
+                "timestamp": t_hist + dt,
+                "amount": 500.0 * (i + 1),
+                "merchant_category_code": "7011",
+                "latitude": 34.0522 + i,
+                "longitude": -118.2437 - i,
+            }, commit=True)
+
+        # Re-evaluating target_tx at t_hist must be completely identical to baseline_features
+        post_future_features = store.extract_features(target_tx, commit=False).to_full_dict()
+        for k, v in baseline_features.items():
+            self.assertEqual(
+                post_future_features[k],
+                v,
+                f"Feature {k} leaked future data! Before: {v}, After: {post_future_features[k]}"
+            )
+
+
 
 if __name__ == "__main__":
     unittest.main()

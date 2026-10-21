@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://python.org"><img src="https://img.shields.io/badge/Python-3.12-blue.svg" alt="Python 3.12"></a>
   <a href="https://github.com/Rangga11268/streamguard-fraud-engine/actions"><img src="https://github.com/Rangga11268/streamguard-fraud-engine/actions/workflows/ci.yml/badge.svg" alt="CI Pipeline"></a>
-  <a href="#"><img src="https://img.shields.io/badge/Tests-182%20Passing-brightgreen.svg" alt="Tests"></a>
+  <a href="#"><img src="https://img.shields.io/badge/Tests-184%20Passing-brightgreen.svg" alt="Tests"></a>
   <a href="#"><img src="https://img.shields.io/badge/Platform-Cross--Platform%20%7C%20Zero--Docker-success.svg" alt="Platform"></a>
   <a href="#"><img src="https://img.shields.io/badge/P99%20Latency-1.19ms%20(CPU)-orange.svg" alt="Latency"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
@@ -71,7 +71,7 @@ Benchmark Results (Verified via `benchmarks/benchmark_engine.py` on Python 3.12 
 | **PSI Drift Detection Latency** | $\le 200\text{ samples}$ | **74 – 150 samples** | **Early alert triggered before label arrival** |
 | **3-Tier Financial Loss Reduction** | $\ge 25.0\%$ | **40.33% simulated loss reduction** | **Verified vs fixed $\tau = 0.5$ threshold** |
 | **Interactive Terminal Demo Runtime** | $< 60.0\text{ s}$ | **19.0 s** | **3.1x faster** |
-| **Master Test Suite Passing** | 100% Pass | **182 / 182 Tests Passing** | **Automated regression suite verified on Windows & Linux** |
+| **Master Test Suite Passing** | 100% Pass | **184 / 184 Tests Passing** | **Automated regression suite verified on Windows & Linux** |
 
 > [!NOTE]
 > **Experimental Context & Production Generalization:**
@@ -148,7 +148,7 @@ python demo.py
 ```
 *Executes all 5 acts (Baseline, Velocity Spikes, Concept Drift, Delayed Feedback, and 3-Tier Routing) in ~20 seconds.*
 
-### 4. Run Complete Automated Test Suite (182 Tests)
+### 4. Run Complete Automated Test Suite (184 Tests)
 ```bash
 python run_tests.py --tier all
 ```

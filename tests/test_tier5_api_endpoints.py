@@ -438,6 +438,28 @@ class TestFastAPIValidationAndEdgeCases(unittest.TestCase):
         })
         self.assertEqual(r2.status_code, 422)
 
+        # Whitespace customer_id
+        r3 = self.client.post("/v1/score", json={
+            "transaction_id": "tx_ws_cust",
+            "customer_id": "   ",
+            "card_id": "k1",
+            "amount": 50.0,
+            "timestamp": 1729080000.0,
+            "location": {"latitude": 10.0, "longitude": 10.0},
+        })
+        self.assertEqual(r3.status_code, 422)
+
+        # Whitespace card_id
+        r4 = self.client.post("/v1/score", json={
+            "transaction_id": "tx_ws_card",
+            "customer_id": "c1",
+            "card_id": "\t\n",
+            "amount": 50.0,
+            "timestamp": 1729080000.0,
+            "location": {"latitude": 10.0, "longitude": 10.0},
+        })
+        self.assertEqual(r4.status_code, 422)
+
 
 class TestFastAPIConcurrency(unittest.TestCase):
     """Test suite for concurrent request safety."""
