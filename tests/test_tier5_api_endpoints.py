@@ -372,6 +372,49 @@ class TestFastAPIValidationAndEdgeCases(unittest.TestCase):
         })
         self.assertEqual(r_lon_low.status_code, 422)
 
+    def test_non_finite_inputs_return_422(self) -> None:
+        """Non-finite numeric values (NaN, +Inf, -Inf) fail validation with HTTP 422."""
+        # Use raw JSON content since standard python json.dumps rejects inf by default
+        headers = {"Content-Type": "application/json"}
+        
+        # Amount Infinity
+        body_inf = (
+            '{"transaction_id": "tx_val_finite", "customer_id": "c1", "card_id": "k1", '
+            '"amount": Infinity, "timestamp": 1729080000.0, '
+            '"location": {"latitude": 40.7128, "longitude": -74.0060}}'
+        )
+        r_amt_inf = self.client.post("/v1/score", content=body_inf, headers=headers)
+        self.assertEqual(r_amt_inf.status_code, 422)
+
+        # Amount NaN
+        body_nan = (
+            '{"transaction_id": "tx_val_finite", "customer_id": "c1", "card_id": "k1", '
+            '"amount": NaN, "timestamp": 1729080000.0, '
+            '"location": {"latitude": 40.7128, "longitude": -74.0060}}'
+        )
+        r_amt_nan = self.client.post("/v1/score", content=body_nan, headers=headers)
+        self.assertEqual(r_amt_nan.status_code, 422)
+
+        # Latitude Infinity
+        body_lat_inf = (
+            '{"transaction_id": "tx_val_finite", "customer_id": "c1", "card_id": "k1", '
+            '"amount": 100.0, "timestamp": 1729080000.0, '
+            '"location": {"latitude": Infinity, "longitude": -74.0060}}'
+        )
+        r_lat_inf = self.client.post("/v1/score", content=body_lat_inf, headers=headers)
+        self.assertEqual(r_lat_inf.status_code, 422)
+
+        # Longitude -Infinity
+        body_lon_ninf = (
+            '{"transaction_id": "tx_val_finite", "customer_id": "c1", "card_id": "k1", '
+            '"amount": 100.0, "timestamp": 1729080000.0, '
+            '"location": {"latitude": 40.7128, "longitude": -Infinity}}'
+        )
+        r_lon_ninf = self.client.post("/v1/score", content=body_lon_ninf, headers=headers)
+        self.assertEqual(r_lon_ninf.status_code, 422)
+
+
+
     def test_missing_mandatory_fields_return_422(self) -> None:
         """Omission of required fields produces HTTP 422."""
         # Missing location entirely

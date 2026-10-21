@@ -3,6 +3,7 @@ Unified real-time streaming feature store with strict zero temporal leakage.
 """
 
 from dataclasses import dataclass
+import math
 import struct
 from typing import Dict, List, Optional, Union, Any
 import numpy as np
@@ -33,6 +34,17 @@ class TransactionEntityEvent:
     merchant_category_code: str
     latitude: float
     longitude: float
+
+    def __post_init__(self) -> None:
+        """Validate physical boundaries and finite numeric properties."""
+        if not math.isfinite(self.amount) or self.amount < 0.0:
+            raise ValueError(f"Transaction amount must be a finite non-negative real number, got: {self.amount}")
+        if not math.isfinite(self.timestamp) or self.timestamp <= 0.0:
+            raise ValueError(f"Transaction timestamp must be a finite strictly positive real number, got: {self.timestamp}")
+        if not math.isfinite(self.latitude) or not (-90.0 <= self.latitude <= 90.0):
+            raise ValueError(f"Latitude must be finite and within physical bounds [-90, 90], got: {self.latitude}")
+        if not math.isfinite(self.longitude) or not (-180.0 <= self.longitude <= 180.0):
+            raise ValueError(f"Longitude must be finite and within physical bounds [-180, 180], got: {self.longitude}")
 
     @classmethod
     def from_dict(cls, data: dict) -> "TransactionEntityEvent":
@@ -147,14 +159,14 @@ class StreamingFeatureStore:
         lon = float(tx_event.longitude)
 
         # Streaming input boundary contracts
-        if amt < 0.0:
-            raise ValueError(f"Transaction amount cannot be negative, got: {amt}")
-        if ts <= 0.0:
-            raise ValueError(f"Transaction timestamp must be strictly positive, got: {ts}")
-        if not (-90.0 <= lat <= 90.0):
-            raise ValueError(f"Latitude out of valid physical bounds [-90, 90], got: {lat}")
-        if not (-180.0 <= lon <= 180.0):
-            raise ValueError(f"Longitude out of valid physical bounds [-180, 180], got: {lon}")
+        if not math.isfinite(amt) or amt < 0.0:
+            raise ValueError(f"Transaction amount must be a finite non-negative real number, got: {amt}")
+        if not math.isfinite(ts) or ts <= 0.0:
+            raise ValueError(f"Transaction timestamp must be a finite strictly positive real number, got: {ts}")
+        if not math.isfinite(lat) or not (-90.0 <= lat <= 90.0):
+            raise ValueError(f"Latitude must be finite and within physical bounds [-90, 90], got: {lat}")
+        if not math.isfinite(lon) or not (-180.0 <= lon <= 180.0):
+            raise ValueError(f"Longitude must be finite and within physical bounds [-180, 180], got: {lon}")
 
         # Retrieve entity windows
         cust_window = self._get_or_create_customer(cust_id)

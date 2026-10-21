@@ -26,6 +26,14 @@ class Location(BaseModel):
         description="Geographic longitude coordinate between -180.0 and 180.0 degrees",
     )
 
+    @field_validator("latitude", "longitude")
+    @classmethod
+    def validate_finite_coordinates(cls, v: float) -> float:
+        import math
+        if not math.isfinite(v):
+            raise ValueError("Geographic coordinate must be a finite real number (cannot be NaN or Inf)")
+        return v
+
 
 class ScoreRequest(BaseModel):
     """Payload for real-time transaction scoring via POST /v1/score."""
@@ -41,6 +49,15 @@ class ScoreRequest(BaseModel):
     location: Location = Field(..., description="Geographic location of transaction")
     device_id: str = Field(default="", description="Originating client device identifier")
     ip_address: str = Field(default="", description="Client IP address")
+
+    @field_validator("amount", "timestamp")
+    @classmethod
+    def validate_finite_numerics(cls, v: float) -> float:
+        import math
+        if not math.isfinite(v):
+            raise ValueError("Numeric value must be a finite real number (cannot be NaN or Inf)")
+        return v
+
 
 
 class ScoreFeatures(BaseModel):

@@ -18,8 +18,10 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+import math
 
 # Windows CPU multiprocessing safety
 os.environ["LOKY_MAX_CPU_COUNT"] = "4"
@@ -221,7 +223,28 @@ def create_app() -> FastAPI:
     # Register API v1 routes
     application.include_router(api_v1_router)
 
+    # Sanitize RequestValidationError to ensure non-finite inputs (NaN, Inf) and exceptions are JSON-safe
+    @application.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        from fastapi.encoders import jsonable_encoder
+        raw_errors = jsonable_encoder(exc.errors())
+
+        def _sanitize(obj: Any) -> Any:
+            if isinstance(obj, float):
+                if not math.isfinite(obj):
+                    return str(obj)
+                return obj
+            elif isinstance(obj, dict):
+                return {k: _sanitize(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [_sanitize(v) for v in obj]
+            return obj
+
+        sanitized_errors = _sanitize(raw_errors)
+        return JSONResponse(status_code=422, content={"detail": sanitized_errors})
+
     return application
+
 
 
 # Top-level ASGI application instance

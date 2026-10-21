@@ -609,6 +609,57 @@ class TestStreamingFeatureStore(unittest.TestCase):
         self.assertEqual(feat_geo_before["velocity_5m_count"], feat_geo_after["velocity_5m_count"])
 
 
+class TestNonFiniteInputGuards(unittest.TestCase):
+    """Test suite verifying rejection of non-finite numbers (NaN, +Inf, -Inf)."""
+
+    def setUp(self):
+        self.store = StreamingFeatureStore()
+        self.base_event = {
+            "transaction_id": "tx_valid",
+            "customer_id": "c_valid",
+            "card_id": "card_valid",
+            "timestamp": 1000.0,
+            "amount": 100.0,
+            "merchant_category_code": "5411",
+            "latitude": 40.7128,
+            "longitude": -74.0060,
+        }
+
+    def test_reject_nan_and_inf_amount(self):
+        for bad_val in [float("nan"), float("inf"), float("-inf")]:
+            with self.assertRaises(ValueError):
+                event_dict = dict(self.base_event, amount=bad_val)
+                self.store.extract_features(event_dict)
+
+            with self.assertRaises(ValueError):
+                TransactionEntityEvent(
+                    transaction_id="tx_1",
+                    customer_id="c_1",
+                    card_id="card_1",
+                    amount=bad_val,
+                    timestamp=1000.0,
+                    merchant_category_code="5411",
+                    latitude=40.0,
+                    longitude=-74.0,
+                )
+
+    def test_reject_nan_and_inf_timestamp(self):
+        for bad_val in [float("nan"), float("inf"), float("-inf")]:
+            with self.assertRaises(ValueError):
+                event_dict = dict(self.base_event, timestamp=bad_val)
+                self.store.extract_features(event_dict)
+
+    def test_reject_nan_and_inf_coordinates(self):
+        for bad_val in [float("nan"), float("inf"), float("-inf")]:
+            with self.assertRaises(ValueError):
+                event_dict = dict(self.base_event, latitude=bad_val)
+                self.store.extract_features(event_dict)
+
+            with self.assertRaises(ValueError):
+                event_dict = dict(self.base_event, longitude=bad_val)
+                self.store.extract_features(event_dict)
+
 
 if __name__ == "__main__":
     unittest.main()
+
