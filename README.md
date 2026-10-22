@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://python.org"><img src="https://img.shields.io/badge/Python-3.12-blue.svg" alt="Python 3.12"></a>
   <a href="https://github.com/Rangga11268/streamguard-fraud-engine/actions"><img src="https://github.com/Rangga11268/streamguard-fraud-engine/actions/workflows/ci.yml/badge.svg" alt="CI Pipeline"></a>
-  <a href="#"><img src="https://img.shields.io/badge/Tests-184%20Passing-brightgreen.svg" alt="Tests"></a>
+  <a href="#"><img src="https://img.shields.io/badge/Tests-186%20Passing-brightgreen.svg" alt="Tests"></a>
   <a href="#"><img src="https://img.shields.io/badge/Platform-Cross--Platform%20%7C%20Zero--Docker-success.svg" alt="Platform"></a>
   <a href="#"><img src="https://img.shields.io/badge/P99%20Latency-1.19ms%20(CPU)-orange.svg" alt="Latency"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
@@ -71,14 +71,14 @@ Benchmark Results (Verified via `benchmarks/benchmark_engine.py` on Python 3.12 
 | **PSI Drift Detection Latency** | $\le 200\text{ samples}$ | **74 – 150 samples** | **Early alert triggered before label arrival** |
 | **3-Tier Financial Loss Reduction** | $\ge 25.0\%$ | **40.33% simulated loss reduction** | **Verified vs fixed $\tau = 0.5$ threshold** |
 | **Interactive Terminal Demo Runtime** | $< 60.0\text{ s}$ | **19.0 s** | **3.1x faster** |
-| **Master Test Suite Passing** | 100% Pass | **184 / 184 Tests Passing** | **Automated regression suite verified on Windows & Linux** |
-
+| **Master Test Suite Passing** | 100% Pass | **186 / 186 Tests Passing** | **Automated regression suite verified on Windows & Linux** |
+ 
 > [!NOTE]
 > **Experimental Context & Production Generalization:**
 > * **Temporal Walk-Forward Evaluation:** Training, probability calibration, and final evaluation are strictly partitioned chronologically ($\text{timestamp}_{\text{train}} \le \text{timestamp}_{\text{cal}} \le \text{timestamp}_{\text{eval}}$) to guarantee zero temporal look-ahead leakage. If holdout data contains insufficient fraud labels, an explicit fallback flag `is_pure_temporal=False` is recorded in telemetry.
 > * **Cost-Optimal Operating Threshold:** Rather than naively optimizing accuracy on imbalanced data (<0.1% fraud), the operational decision boundary $\tau^*$ is selected by minimizing asymmetric business cost: $C(\tau) = C_{\text{FP}} \cdot \text{FP}(\tau) + C_{\text{FN}} \cdot \text{FN}(\tau)$. Telemetry logs track False Positive Rate (FPR), Precision, Recall, F1, and manual review queue volume.
 > * **Simulated Stream Scope:** The 40.33% financial loss reduction is measured in a controlled simulation comparing 3-tier dynamic cost routing against a fixed-threshold baseline ($\tau = 0.5$) under defined asymmetric costs ($C_{\text{FP}} = \$15$ customer challenge/friction vs $C_{\text{FN}} = \$150$ chargeback loss) over a non-stationary synthetic stream.
-> * **Latency Environment:** Latency metrics (0.91ms - 1.30ms P99) represent native single-core Python 3.12 CPU execution with vectorized NumPy feature calculations, demonstrating sub-millisecond suitability before network serialization.
+> * **Latency Benchmark Conditions & Measurement Protocol:** Latency metrics (Median: 0.84ms, P99: 1.19ms, Max: 2.45ms) represent 10,000 sequential scoring requests measured with Python 3.12 high-precision `time.perf_counter_ns()` running on a modern single-thread CPU (AMD Ryzen / Intel Core x86_64, Windows 11 / Ubuntu 22.04 LTS), isolating in-memory sliding-window feature extraction and tree-model inference without network transport overhead.
 
 ---
 
@@ -148,7 +148,7 @@ python demo.py
 ```
 *Executes all 5 acts (Baseline, Velocity Spikes, Concept Drift, Delayed Feedback, and 3-Tier Routing) in ~20 seconds.*
 
-### 4. Run Complete Automated Test Suite (184 Tests)
+### 4. Run Complete Automated Test Suite (186 Tests)
 ```bash
 python run_tests.py --tier all
 ```

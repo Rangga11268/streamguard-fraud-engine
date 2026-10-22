@@ -5,6 +5,7 @@ Unified real-time streaming feature store with strict zero temporal leakage.
 from dataclasses import dataclass
 import math
 import struct
+import threading
 from typing import Dict, List, Optional, Union, Any
 import numpy as np
 
@@ -117,6 +118,7 @@ class StreamingFeatureStore:
 
     def __init__(self, config: Optional[StreamGuardConfig] = None):
         self.config: StreamGuardConfig = config or default_config
+        self._lock = threading.RLock()
         self._customer_windows: Dict[str, SlidingEntityWindow] = {}
         self._card_windows: Dict[str, SlidingEntityWindow] = {}
         self._last_event_timestamp: float = 0.0
@@ -176,31 +178,18 @@ class StreamingFeatureStore:
         if not math.isfinite(lon) or not (-180.0 <= lon <= 180.0):
             raise ValueError(f"Longitude must be finite and within physical bounds [-180, 180], got: {lon}")
 
-        # Retrieve entity windows
-        cust_window = self._get_or_create_customer(cust_id)
-        card_window = self._get_or_create_card(card_id)
+        with self._lock:
+            # Retrieve entity windows
+            cust_window = self._get_or_create_customer(cust_id)
+            card_window = self._get_or_create_card(card_id)
 
-        # 1. Compute Haversine Travel Speed BEFORE committing new coordinates
-        if cust_window.last_latitude is not None and cust_window.last_timestamp is not None:
-            if ts >= cust_window.last_timestamp:
-                travel_speed_kmh, impossible_flag, _ = compute_travel_speed(
-                    lat1=cust_window.last_latitude,
-                    lon1=cust_window.last_longitude,
-                    t1=cust_window.last_timestamp,
-                    lat2=lat,
-                    lon2=lon,
-                    t2=ts,
-                    speed_threshold_kmh=self.config.impossible_travel_speed_kmh,
-                    min_time_delta_hours=self.config.min_time_delta_hours,
-                )
-            else:
-                # Out-of-order past transaction (ts < cust_window.last_timestamp)
-                prior_lat, prior_lon, prior_ts = cust_window.get_last_location_before(ts)
-                if prior_lat is not None and prior_ts is not None:
+            # 1. Compute Haversine Travel Speed BEFORE committing new coordinates
+            if cust_window.last_latitude is not None and cust_window.last_timestamp is not None:
+                if ts >= cust_window.last_timestamp:
                     travel_speed_kmh, impossible_flag, _ = compute_travel_speed(
-                        lat1=prior_lat,
-                        lon1=prior_lon,
-                        t1=prior_ts,
+                        lat1=cust_window.last_latitude,
+                        lon1=cust_window.last_longitude,
+                        t1=cust_window.last_timestamp,
                         lat2=lat,
                         lon2=lon,
                         t2=ts,
@@ -208,81 +197,95 @@ class StreamingFeatureStore:
                         min_time_delta_hours=self.config.min_time_delta_hours,
                     )
                 else:
-                    # Cold-start: no historical event prior to ts
-                    travel_speed_kmh = 0.0
-                    impossible_flag = 0
-        else:
-            # Cold-start: first transaction seen for this customer
-            travel_speed_kmh = 0.0
-            impossible_flag = 0
+                    # Out-of-order past transaction (ts < cust_window.last_timestamp)
+                    prior_lat, prior_lon, prior_ts = cust_window.get_last_location_before(ts)
+                    if prior_lat is not None and prior_ts is not None:
+                        travel_speed_kmh, impossible_flag, _ = compute_travel_speed(
+                            lat1=prior_lat,
+                            lon1=prior_lon,
+                            t1=prior_ts,
+                            lat2=lat,
+                            lon2=lon,
+                            t2=ts,
+                            speed_threshold_kmh=self.config.impossible_travel_speed_kmh,
+                            min_time_delta_hours=self.config.min_time_delta_hours,
+                        )
+                    else:
+                        # Cold-start: no historical event prior to ts
+                        travel_speed_kmh = 0.0
+                        impossible_flag = 0
+            else:
+                # Cold-start: first transaction seen for this customer
+                travel_speed_kmh = 0.0
+                impossible_flag = 0
 
-        # 2. Extract customer-level window aggregates BEFORE committing
-        cust_stats = cust_window.get_stats(
-            current_timestamp=ts,
-            current_amount=amt,
-            epsilon=self.config.epsilon,
-        )
-
-        # 3. Extract card-level window aggregates BEFORE committing
-        card_stats = card_window.get_stats(
-            current_timestamp=ts,
-            current_amount=amt,
-            epsilon=self.config.epsilon,
-        )
-
-        # 4. Construct contiguous float32 feature array (16 features) via struct pack
-        buf = _STRUCT_16F(
-            amt,                                        # 0: amount
-            float(cust_stats.count_5m),                 # 1: velocity_5m_count
-            float(cust_stats.count_1h),                 # 2: velocity_1h_count
-            float(cust_stats.count_24h),                # 3: velocity_24h_count
-            cust_stats.sum_5m,                          # 4: spending_5m_sum
-            cust_stats.sum_1h,                          # 5: spending_1h_sum
-            cust_stats.sum_24h,                         # 6: spending_24h_sum
-            cust_stats.amount_to_mean24h_ratio,         # 7: amount_to_mean24h_ratio
-            cust_stats.velocity_5m_to_24h_ratio,        # 8: velocity_5m_to_24h_ratio
-            float(card_stats.count_5m),                 # 9: card_velocity_5m_count
-            float(card_stats.count_1h),                 # 10: card_velocity_1h_count
-            float(card_stats.count_24h),                # 11: card_velocity_24h_count
-            card_stats.sum_24h,                         # 12: card_spending_24h_sum
-            float(card_stats.distinct_mcc_count),       # 13: card_distinct_mcc_count
-            travel_speed_kmh,                           # 14: travel_speed_kmh
-            float(impossible_flag),                     # 15: impossible_travel_flag
-        )
-        feature_vector = np.frombuffer(buf, dtype=np.float32).copy()
-
-        extracted = ExtractedFeatures(
-            feature_names=list(FEATURE_NAMES),
-            feature_vector=feature_vector,
-            travel_speed_kmh=travel_speed_kmh,
-            impossible_travel_flag=impossible_flag,
-            velocity_5m_count=cust_stats.count_5m,
-            velocity_1h_count=cust_stats.count_1h,
-            velocity_24h_count=cust_stats.count_24h,
-            amount_to_mean24h_ratio=cust_stats.amount_to_mean24h_ratio,
-        )
-
-        # 5. Commit state only AFTER extraction has completed
-        if commit:
-            cust_window.commit(
-                timestamp=ts,
-                amount=amt,
-                mcc=mcc,
-                latitude=lat,
-                longitude=lon,
+            # 2. Extract customer-level window aggregates BEFORE committing
+            cust_stats = cust_window.get_stats(
+                current_timestamp=ts,
+                current_amount=amt,
+                epsilon=self.config.epsilon,
             )
-            card_window.commit(
-                timestamp=ts,
-                amount=amt,
-                mcc=mcc,
-                latitude=lat,
-                longitude=lon,
-            )
-            if ts > self._last_event_timestamp:
-                self._last_event_timestamp = ts
-            self._total_processed += 1
 
-        return extracted
+            # 3. Extract card-level window aggregates BEFORE committing
+            card_stats = card_window.get_stats(
+                current_timestamp=ts,
+                current_amount=amt,
+                epsilon=self.config.epsilon,
+            )
+
+            # 4. Construct contiguous float32 feature array (16 features) via struct pack
+            buf = _STRUCT_16F(
+                amt,                                        # 0: amount
+                float(cust_stats.count_5m),                 # 1: velocity_5m_count
+                float(cust_stats.count_1h),                 # 2: velocity_1h_count
+                float(cust_stats.count_24h),                # 3: velocity_24h_count
+                cust_stats.sum_5m,                          # 4: spending_5m_sum
+                cust_stats.sum_1h,                          # 5: spending_1h_sum
+                cust_stats.sum_24h,                         # 6: spending_24h_sum
+                cust_stats.amount_to_mean24h_ratio,         # 7: amount_to_mean24h_ratio
+                cust_stats.velocity_5m_to_24h_ratio,        # 8: velocity_5m_to_24h_ratio
+                float(card_stats.count_5m),                 # 9: card_velocity_5m_count
+                float(card_stats.count_1h),                 # 10: card_velocity_1h_count
+                float(card_stats.count_24h),                # 11: card_velocity_24h_count
+                card_stats.sum_24h,                         # 12: card_spending_24h_sum
+                float(card_stats.distinct_mcc_count),       # 13: card_distinct_mcc_count
+                travel_speed_kmh,                           # 14: travel_speed_kmh
+                float(impossible_flag),                     # 15: impossible_travel_flag
+            )
+            feature_vector = np.frombuffer(buf, dtype=np.float32).copy()
+
+            extracted = ExtractedFeatures(
+                feature_names=list(FEATURE_NAMES),
+                feature_vector=feature_vector,
+                travel_speed_kmh=travel_speed_kmh,
+                impossible_travel_flag=impossible_flag,
+                velocity_5m_count=cust_stats.count_5m,
+                velocity_1h_count=cust_stats.count_1h,
+                velocity_24h_count=cust_stats.count_24h,
+                amount_to_mean24h_ratio=cust_stats.amount_to_mean24h_ratio,
+            )
+
+            # 5. Commit state only AFTER extraction has completed
+            if commit:
+                cust_window.commit(
+                    timestamp=ts,
+                    amount=amt,
+                    mcc=mcc,
+                    latitude=lat,
+                    longitude=lon,
+                )
+                card_window.commit(
+                    timestamp=ts,
+                    amount=amt,
+                    mcc=mcc,
+                    latitude=lat,
+                    longitude=lon,
+                )
+                if ts > self._last_event_timestamp:
+                    self._last_event_timestamp = ts
+                self._total_processed += 1
+
+            return extracted
 
     def commit(self, event: Union[TransactionEntityEvent, dict]) -> None:
         """
@@ -300,27 +303,28 @@ class StreamingFeatureStore:
         lat = float(tx_event.latitude)
         lon = float(tx_event.longitude)
 
-        cust_window = self._get_or_create_customer(tx_event.customer_id)
-        card_window = self._get_or_create_card(tx_event.card_id)
+        with self._lock:
+            cust_window = self._get_or_create_customer(tx_event.customer_id)
+            card_window = self._get_or_create_card(tx_event.card_id)
 
-        cust_window.commit(
-            timestamp=ts,
-            amount=amt,
-            mcc=mcc,
-            latitude=lat,
-            longitude=lon,
-        )
-        card_window.commit(
-            timestamp=ts,
-            amount=amt,
-            mcc=mcc,
-            latitude=lat,
-            longitude=lon,
-        )
+            cust_window.commit(
+                timestamp=ts,
+                amount=amt,
+                mcc=mcc,
+                latitude=lat,
+                longitude=lon,
+            )
+            card_window.commit(
+                timestamp=ts,
+                amount=amt,
+                mcc=mcc,
+                latitude=lat,
+                longitude=lon,
+            )
 
-        if ts > self._last_event_timestamp:
-            self._last_event_timestamp = ts
-        self._total_processed += 1
+            if ts > self._last_event_timestamp:
+                self._last_event_timestamp = ts
+            self._total_processed += 1
 
     def evict_inactive(
         self,
@@ -335,47 +339,53 @@ class StreamingFeatureStore:
         ttl = ttl_seconds if ttl_seconds is not None else self.config.entity_ttl_sec
         evicted_count = 0
 
-        # Evict customer windows
-        cust_to_evict = [
-            cid for cid, w in self._customer_windows.items()
-            if w.is_inactive(current_timestamp, ttl)
-        ]
-        for cid in cust_to_evict:
-            del self._customer_windows[cid]
-            evicted_count += 1
+        with self._lock:
+            # Evict customer windows
+            cust_to_evict = [
+                cid for cid, w in self._customer_windows.items()
+                if w.is_inactive(current_timestamp, ttl)
+            ]
+            for cid in cust_to_evict:
+                del self._customer_windows[cid]
+                evicted_count += 1
 
-        # Evict card windows
-        card_to_evict = [
-            card_id for card_id, w in self._card_windows.items()
-            if w.is_inactive(current_timestamp, ttl)
-        ]
-        for card_id in card_to_evict:
-            del self._card_windows[card_id]
-            evicted_count += 1
+            # Evict card windows
+            card_to_evict = [
+                card_id for card_id, w in self._card_windows.items()
+                if w.is_inactive(current_timestamp, ttl)
+            ]
+            for card_id in card_to_evict:
+                del self._card_windows[card_id]
+                evicted_count += 1
 
-        return evicted_count
+            return evicted_count
 
     def get_customer_window(self, customer_id: str) -> Optional[SlidingEntityWindow]:
         """Retrieve customer window if it exists."""
-        return self._customer_windows.get(customer_id)
+        with self._lock:
+            return self._customer_windows.get(customer_id)
 
     def get_card_window(self, card_id: str) -> Optional[SlidingEntityWindow]:
         """Retrieve card window if it exists."""
-        return self._card_windows.get(card_id)
+        with self._lock:
+            return self._card_windows.get(card_id)
 
     @property
     def active_entity_count(self) -> int:
         """Total active customer and card entity windows."""
-        return len(self._customer_windows) + len(self._card_windows)
+        with self._lock:
+            return len(self._customer_windows) + len(self._card_windows)
 
     @property
     def total_transactions_processed(self) -> int:
         """Total transactions committed to the store."""
-        return self._total_processed
+        with self._lock:
+            return self._total_processed
 
     def reset(self) -> None:
         """Clear all entity states and reset the feature store."""
-        self._customer_windows.clear()
-        self._card_windows.clear()
-        self._last_event_timestamp = 0.0
-        self._total_processed = 0
+        with self._lock:
+            self._customer_windows.clear()
+            self._card_windows.clear()
+            self._last_event_timestamp = 0.0
+            self._total_processed = 0

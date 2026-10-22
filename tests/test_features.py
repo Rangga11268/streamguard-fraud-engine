@@ -725,12 +725,109 @@ class TestNonFiniteInputGuards(unittest.TestCase):
 
         # Re-evaluating target_tx at t_hist must be completely identical to baseline_features
         post_future_features = store.extract_features(target_tx, commit=False).to_full_dict()
-        for k, v in baseline_features.items():
+        for k in FEATURE_NAMES:
+            self.assertIn(k, baseline_features)
+            self.assertIn(k, post_future_features)
             self.assertEqual(
                 post_future_features[k],
-                v,
-                f"Feature {k} leaked future data! Before: {v}, After: {post_future_features[k]}"
+                baseline_features[k],
+                f"Feature {k} leaked future data! Before: {baseline_features[k]}, After: {post_future_features[k]}"
             )
+
+    def test_exhaustive_16_feature_temporal_non_leakage(self):
+        """Exhaustively verify that all 16 features remain strictly invariant under future event ingestion."""
+        store = StreamingFeatureStore()
+        t_base = 2_000_000.0
+
+        # Ingest 3 baseline historical events
+        for i in range(3):
+            store.extract_features({
+                "transaction_id": f"tx_base_{i}",
+                "customer_id": "cust_16f_leak",
+                "card_id": "card_16f_leak",
+                "timestamp": t_base + (i * 60.0),
+                "amount": 25.0 * (i + 1),
+                "merchant_category_code": "5411",
+                "latitude": 40.7128,
+                "longitude": -74.0060,
+            }, commit=True)
+
+        # Candidate event at t_base + 300
+        candidate_tx = {
+            "transaction_id": "tx_eval_candidate",
+            "customer_id": "cust_16f_leak",
+            "card_id": "card_16f_leak",
+            "timestamp": t_base + 300.0,
+            "amount": 100.0,
+            "merchant_category_code": "5812",
+            "latitude": 40.7135,
+            "longitude": -74.0050,
+        }
+        baseline = store.extract_features(candidate_tx, commit=False)
+        baseline_vec = np.array(baseline.feature_vector, dtype=np.float32)
+        baseline_dict = baseline.to_full_dict()
+
+        # Ingest 50 high-velocity future transactions spanning minutes to 12 hours ahead
+        for j in range(50):
+            store.extract_features({
+                "transaction_id": f"tx_future_burst_{j}",
+                "customer_id": "cust_16f_leak",
+                "card_id": "card_16f_leak",
+                "timestamp": t_base + 1000.0 + (j * 500.0),
+                "amount": 150.0 + (j * 10.0),
+                "merchant_category_code": "6011" if j % 2 == 0 else "7011",
+                "latitude": 37.7749 + (j * 0.01),
+                "longitude": -122.4194 - (j * 0.01),
+            }, commit=True)
+
+        # Re-evaluate candidate at past timestamp t_base + 300
+        recomputed = store.extract_features(candidate_tx, commit=False)
+        recomputed_vec = np.array(recomputed.feature_vector, dtype=np.float32)
+        recomputed_dict = recomputed.to_full_dict()
+
+        # Verify all 16 features are numerically identical
+        self.assertEqual(len(FEATURE_NAMES), 16)
+        np.testing.assert_array_equal(
+            recomputed_vec,
+            baseline_vec,
+            err_msg="Full 16-element feature vector diverged after future stream events!"
+        )
+        for name in FEATURE_NAMES:
+            self.assertEqual(
+                recomputed_dict[name],
+                baseline_dict[name],
+                f"Feature '{name}' leaked future streaming state!"
+            )
+
+    def test_concurrent_transactions_for_same_customer_are_thread_safe(self):
+        """Simultaneous transactions for the same customer are thread-safe and avoid race conditions."""
+        import concurrent.futures
+
+        store = StreamingFeatureStore()
+        n_tx = 50
+        base_t = 1_000_000.0
+
+        def submit_tx(i: int):
+            return store.extract_features({
+                "transaction_id": f"tx_concurrent_{i}",
+                "customer_id": "cust_race_check",
+                "card_id": "card_race_check",
+                "timestamp": base_t + float(i),
+                "amount": 10.0 + float(i),
+                "merchant_category_code": "5411",
+                "latitude": 40.7128,
+                "longitude": -74.0060,
+            }, commit=True)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+            futures = [executor.submit(submit_tx, i) for i in range(n_tx)]
+            results = [f.result() for f in concurrent.futures.as_completed(futures)]
+
+        self.assertEqual(len(results), n_tx)
+        self.assertEqual(store.total_transactions_processed, n_tx)
+        cust_win = store.get_customer_window("cust_race_check")
+        self.assertIsNotNone(cust_win)
+        self.assertEqual(cust_win.count_24h, n_tx)
 
 
 
